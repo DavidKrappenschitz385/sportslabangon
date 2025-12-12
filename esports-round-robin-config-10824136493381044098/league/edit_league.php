@@ -710,7 +710,13 @@ $stats = $stats_stmt->fetch(PDO::FETCH_ASSOC);
 
                             <div class="form-group">
                                 <label>Round Robin Rounds</label>
-                                <input type="number" name="round_robin_rounds" class="form-control" value="<?php echo $league['round_robin_rounds'] ?? 1; ?>" min="1" max="4">
+                                <select name="round_robin_rounds" class="form-control">
+                                    <option value="1" <?php echo ($league['round_robin_rounds'] ?? 1) == 1 ? 'selected' : ''; ?>>Single Round Robin (1 Round)</option>
+                                    <option value="2" <?php echo ($league['round_robin_rounds'] ?? 1) == 2 ? 'selected' : ''; ?>>Double Round Robin (2 Rounds)</option>
+                                    <option value="3" <?php echo ($league['round_robin_rounds'] ?? 1) == 3 ? 'selected' : ''; ?>>Triple Round Robin (3 Rounds)</option>
+                                    <option value="4" <?php echo ($league['round_robin_rounds'] ?? 1) == 4 ? 'selected' : ''; ?>>Quadruple Round Robin (4 Rounds)</option>
+                                </select>
+                                <div class="help-text">Number of times each team plays every other team</div>
                             </div>
 
                             <div class="form-group">

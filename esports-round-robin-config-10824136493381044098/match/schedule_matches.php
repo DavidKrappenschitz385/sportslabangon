@@ -208,7 +208,7 @@ $schedule_full = ($current_rr_match_count >= $total_expected_matches && $total_e
             </div>
         <?php elseif (count($teams) >= 2): ?>
         <div class="form-section">
-            <h3>Create Round-Robin Schedule</h3>
+            <h3><?php echo $current_rr_match_count > 0 ? 'Schedule Remaining Rounds' : 'Create Round-Robin Schedule'; ?></h3>
             <form method="POST">
                 <div class="form-group">
                     <label>Start Date:</label>
@@ -236,7 +236,7 @@ $schedule_full = ($current_rr_match_count >= $total_expected_matches && $total_e
                 </div>
 
                 <br>
-                <button type="submit" name="create_schedule" class="btn">Generate Schedule</button>
+                <button type="submit" name="create_schedule" class="btn"><?php echo $current_rr_match_count > 0 ? 'Generate Remaining Matches' : 'Generate Schedule'; ?></button>
             </form>
         </div>
         <?php else: ?>
