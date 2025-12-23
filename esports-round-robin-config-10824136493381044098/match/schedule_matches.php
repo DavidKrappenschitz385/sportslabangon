@@ -200,7 +200,7 @@ $schedule_full = ($current_rr_match_count >= $total_expected_matches && $total_e
         .form-group { margin-bottom: 15px; display: inline-block; margin-right: 20px; }
         label { display: block; margin-bottom: 5px; }
         input, select { padding: 8px; }
-        .btn { background: #007bff; color: white; padding: 10px 20px; border: none; cursor: pointer; text-decoration: none; border-radius: 3px; }
+        .btn { background: #007bff; color: white; padding: 10px 20px; border: none; cursor: pointer; text-decoration: none; border-radius: 3px; display: inline-block; margin-right: 5px; margin-bottom: 5px; }
         .btn-danger { background: #dc3545; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
         th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
