@@ -207,6 +207,46 @@ $schedule_full = ($current_rr_match_count >= $total_expected_matches && $total_e
         th { background-color: #f8f9fa; }
         .error { color: red; margin-bottom: 15px; }
         .info-box { background: #d1ecf1; border: 1px solid #bee5eb; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 5px;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover,
+        .close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .score-input {
+            width: 60px;
+            text-align: center;
+            font-size: 1.2em;
+        }
     </style>
 </head>
 <body>
@@ -302,8 +342,8 @@ $schedule_full = ($current_rr_match_count >= $total_expected_matches && $total_e
                     <td><?php echo htmlspecialchars($match['home_team']); ?></td>
                     <td><?php echo htmlspecialchars($match['away_team']); ?></td>
                     <td><?php echo htmlspecialchars($match['venue_name'] ?? 'TBD'); ?></td>
-                    <td><?php echo ucfirst($match['status']); ?></td>
-                    <td>
+                    <td id="status-<?php echo $match['id']; ?>"><?php echo ucfirst($match['status']); ?></td>
+                    <td id="score-<?php echo $match['id']; ?>">
                         <?php if ($match['status'] == 'completed'): ?>
                             <?php echo $match['home_score']; ?> - <?php echo $match['away_score']; ?>
                         <?php else: ?>
@@ -311,7 +351,12 @@ $schedule_full = ($current_rr_match_count >= $total_expected_matches && $total_e
                         <?php endif; ?>
                     </td>
                     <td>
-                        <a href="edit_match.php?id=<?php echo $match['id']; ?>" class="btn">Edit</a>
+                        <?php if ($match['status'] == 'completed'): ?>
+                            <button onclick="openEditModal(<?php echo $match['id']; ?>, '<?php echo htmlspecialchars(addslashes($match['home_team'])); ?>', '<?php echo htmlspecialchars(addslashes($match['away_team'])); ?>', <?php echo $match['home_score']; ?>, <?php echo $match['away_score']; ?>)" class="btn">Edit</button>
+                        <?php else: ?>
+                            <a href="edit_match.php?id=<?php echo $match['id']; ?>" class="btn">Edit</a>
+                        <?php endif; ?>
+
                         <?php if ($match['status'] == 'scheduled'): ?>
                             <a href="record_result.php?id=<?php echo $match['id']; ?>" class="btn" style="background: #28a745;">Record Result</a>
                         <?php endif; ?>
@@ -323,6 +368,33 @@ $schedule_full = ($current_rr_match_count >= $total_expected_matches && $total_e
         <?php endif; ?>
 
         <p><a href="view_league.php?id=<?php echo $league_id; ?>">← Back to League</a></p>
+    </div>
+
+    <!-- Edit Score Modal -->
+    <div id="editScoreModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeEditModal()">&times;</span>
+            <h3>Edit Match Score</h3>
+            <p id="modalTeams"></p>
+            <form id="editScoreForm" onsubmit="submitScoreUpdate(event)">
+                <input type="hidden" id="editMatchId" name="match_id">
+                <div style="display: flex; justify-content: center; align-items: center; gap: 10px; margin: 20px 0;">
+                    <div style="text-align: center;">
+                        <label id="homeTeamLabel"></label>
+                        <input type="number" id="editHomeScore" name="home_score" class="score-input" required min="0">
+                    </div>
+                    <span style="font-weight: bold;">-</span>
+                    <div style="text-align: center;">
+                        <label id="awayTeamLabel"></label>
+                        <input type="number" id="editAwayScore" name="away_score" class="score-input" required min="0">
+                    </div>
+                </div>
+                <div style="text-align: center;">
+                    <button type="submit" class="btn">Update Score</button>
+                </div>
+                <div id="updateMessage" style="text-align: center; margin-top: 10px;"></div>
+            </form>
+        </div>
     </div>
 
     <script>
@@ -338,6 +410,91 @@ $schedule_full = ($current_rr_match_count >= $total_expected_matches && $total_e
                 customGroup.style.display = 'none';
                 customInput.removeAttribute('required');
             }
+        }
+
+        // Modal Functions
+        var modal = document.getElementById("editScoreModal");
+
+        function openEditModal(matchId, homeTeam, awayTeam, homeScore, awayScore) {
+            document.getElementById('editMatchId').value = matchId;
+            document.getElementById('modalTeams').innerText = homeTeam + " vs " + awayTeam;
+            document.getElementById('homeTeamLabel').innerText = homeTeam;
+            document.getElementById('awayTeamLabel').innerText = awayTeam;
+            document.getElementById('editHomeScore').value = homeScore;
+            document.getElementById('editAwayScore').value = awayScore;
+            document.getElementById('updateMessage').innerHTML = '';
+            modal.style.display = "block";
+        }
+
+        function closeEditModal() {
+            modal.style.display = "none";
+        }
+
+        window.onclick = function(event) {
+            if (event.target == modal) {
+                closeEditModal();
+            }
+        }
+
+        function submitScoreUpdate(event) {
+            event.preventDefault();
+
+            var matchId = document.getElementById('editMatchId').value;
+            var homeScore = document.getElementById('editHomeScore').value;
+            var awayScore = document.getElementById('editAwayScore').value;
+            var messageDiv = document.getElementById('updateMessage');
+
+            messageDiv.innerHTML = 'Updating...';
+
+            var formData = new FormData();
+            formData.append('match_id', matchId);
+            formData.append('home_score', homeScore);
+            formData.append('away_score', awayScore);
+
+            fetch('update_score.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    messageDiv.innerHTML = '<span style="color: green;">' + data.message + '</span>';
+
+                    // Update the UI
+                    document.getElementById('score-' + matchId).innerText = homeScore + ' - ' + awayScore;
+
+                    // Update the onclick handler with new scores
+                    var editBtn = document.querySelector('button[onclick*="openEditModal(' + matchId + ',"]');
+                    if (editBtn) {
+                        // Extract original team names from current onclick (since they are constant)
+                        var onclickStr = editBtn.getAttribute('onclick');
+                        // Simple regex to extract team names might be fragile, so we can store them in data attributes if preferred.
+                        // But for now, since we have them in the closure of this function call if we wanted,
+                        // or we can just reconstruct the string if we assume team names haven't changed.
+                        // Actually, easier way: Just update the scores in the onclick attribute.
+
+                        // We can just get the team names from the labels we populated
+                        var homeTeam = document.getElementById('homeTeamLabel').innerText;
+                        var awayTeam = document.getElementById('awayTeamLabel').innerText;
+
+                        // Escape quotes for the function call
+                        var homeTeamEscaped = homeTeam.replace(/'/g, "\\'");
+                        var awayTeamEscaped = awayTeam.replace(/'/g, "\\'");
+
+                        editBtn.setAttribute('onclick', "openEditModal(" + matchId + ", '" + homeTeamEscaped + "', '" + awayTeamEscaped + "', " + homeScore + ", " + awayScore + ")");
+                    }
+
+                    setTimeout(function() {
+                        closeEditModal();
+                    }, 1500);
+                } else {
+                    messageDiv.innerHTML = '<span style="color: red;">' + data.message + '</span>';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                messageDiv.innerHTML = '<span style="color: red;">An error occurred.</span>';
+            });
         }
     </script>
 </body>
