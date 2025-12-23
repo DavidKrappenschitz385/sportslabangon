@@ -45,8 +45,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_league'])) {
     $max_teams = $_POST['max_teams'];
     $rules = trim($_POST['rules']);
     $status = $_POST['status'];
-    $league_type = $_POST['league_type'];
-    $round_robin_rounds = !empty($_POST['round_robin_rounds']) ? (int)$_POST['round_robin_rounds'] : 1;
     $knockout_teams = !empty($_POST['knockout_teams']) ? (int)$_POST['knockout_teams'] : 0;
 
     // Validation
@@ -90,8 +88,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_league'])) {
                             max_teams = :max_teams,
                             rules = :rules,
                             status = :status,
-                            league_type = :league_type,
-                            round_robin_rounds = :round_robin_rounds,
                             knockout_teams = :knockout_teams,
                             updated_at = NOW()
                         WHERE id = :id";
@@ -106,8 +102,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_league'])) {
         $update_stmt->bindParam(':max_teams', $max_teams);
         $update_stmt->bindParam(':rules', $rules);
         $update_stmt->bindParam(':status', $status);
-        $update_stmt->bindParam(':league_type', $league_type);
-        $update_stmt->bindParam(':round_robin_rounds', $round_robin_rounds);
         $update_stmt->bindParam(':knockout_teams', $knockout_teams);
         $update_stmt->bindParam(':id', $league_id);
 
@@ -698,25 +692,6 @@ $stats = $stats_stmt->fetch(PDO::FETCH_ASSOC);
                                     </option>
                                 </select>
                                 <div class="help-text">Current status of the league</div>
-                            </div>
-
-                            <div class="form-group">
-                                <label>League Format</label>
-                                <select name="league_type" class="form-control">
-                                    <option value="round_robin" <?php echo ($league['league_type'] ?? 'round_robin') == 'round_robin' ? 'selected' : ''; ?>>Round Robin</option>
-                                    <option value="single_elimination" <?php echo ($league['league_type'] ?? '') == 'single_elimination' ? 'selected' : ''; ?>>Single Elimination</option>
-                                </select>
-                            </div>
-
-                            <div class="form-group">
-                                <label>Round Robin Rounds</label>
-                                <select name="round_robin_rounds" class="form-control">
-                                    <option value="1" <?php echo ($league['round_robin_rounds'] ?? 1) == 1 ? 'selected' : ''; ?>>Single Round Robin (1 Round)</option>
-                                    <option value="2" <?php echo ($league['round_robin_rounds'] ?? 1) == 2 ? 'selected' : ''; ?>>Double Round Robin (2 Rounds)</option>
-                                    <option value="3" <?php echo ($league['round_robin_rounds'] ?? 1) == 3 ? 'selected' : ''; ?>>Triple Round Robin (3 Rounds)</option>
-                                    <option value="4" <?php echo ($league['round_robin_rounds'] ?? 1) == 4 ? 'selected' : ''; ?>>Quadruple Round Robin (4 Rounds)</option>
-                                </select>
-                                <div class="help-text">Number of times each team plays every other team</div>
                             </div>
 
                             <div class="form-group">

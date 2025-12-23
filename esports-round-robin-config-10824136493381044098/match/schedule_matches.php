@@ -39,11 +39,34 @@ $venues_stmt = $db->prepare($venues_query);
 $venues_stmt->execute();
 $venues = $venues_stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Initialize round_robin_rounds from league data
+$round_robin_rounds = $league['round_robin_rounds'] ?? 1;
+
 // Handle form submission for creating matches
 if ($_POST && isset($_POST['create_schedule'])) {
     $start_date = $_POST['start_date'];
     $match_interval = $_POST['match_interval']; // days between matches
     $matches_per_day = $_POST['matches_per_day'];
+
+    // Determine rounds based on format
+    $match_format = $_POST['match_format'];
+    $rounds = 1; // Default
+    if ($match_format == 'single') {
+        $rounds = 1;
+    } elseif ($match_format == 'double') {
+        $rounds = 2;
+    } elseif ($match_format == 'custom') {
+        $rounds = (int)$_POST['custom_rounds'];
+    }
+
+    // Update league with new round count
+    $update_query = "UPDATE leagues SET round_robin_rounds = :rounds WHERE id = :id";
+    $update_stmt = $db->prepare($update_query);
+    $update_stmt->execute([':rounds' => $rounds, ':id' => $league_id]);
+
+    // Update local variable
+    $round_robin_rounds = $rounds;
+    $league['round_robin_rounds'] = $rounds;
 
     $team_count = count($teams);
     if ($team_count < 2) {
@@ -56,7 +79,6 @@ if ($_POST && isset($_POST['create_schedule'])) {
         $matches_stmt->execute();
         $current_match_count = $matches_stmt->fetchColumn();
 
-        $round_robin_rounds = $league['round_robin_rounds'] ?? 1;
         $matches_per_round = $team_count * ($team_count - 1) / 2;
         $total_expected_matches = $matches_per_round * $round_robin_rounds;
 
@@ -209,7 +231,21 @@ $schedule_full = ($current_rr_match_count >= $total_expected_matches && $total_e
         <?php elseif (count($teams) >= 2): ?>
         <div class="form-section">
             <h3><?php echo $current_rr_match_count > 0 ? 'Schedule Remaining Rounds' : 'Create Round-Robin Schedule'; ?></h3>
-            <form method="POST">
+            <form method="POST" id="scheduleForm">
+                <div class="form-group">
+                    <label>Match Format:</label>
+                    <select name="match_format" id="matchFormatSelect" onchange="toggleCustomRounds()">
+                        <option value="single" <?php echo ($round_robin_rounds == 1) ? 'selected' : ''; ?>>Single Round Robin (1 Round)</option>
+                        <option value="double" <?php echo ($round_robin_rounds == 2) ? 'selected' : ''; ?>>Double Round Robin (2 Rounds)</option>
+                        <option value="custom" <?php echo ($round_robin_rounds > 2) ? 'selected' : ''; ?>>Custom Format</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="customRoundsGroup" style="display: <?php echo ($round_robin_rounds > 2) ? 'inline-block' : 'none'; ?>;">
+                    <label>Number of Rounds:</label>
+                    <input type="number" name="custom_rounds" id="customRoundsInput" value="<?php echo ($round_robin_rounds > 2) ? $round_robin_rounds : 3; ?>" min="1" max="10">
+                </div>
+
                 <div class="form-group">
                     <label>Start Date:</label>
                     <input type="date" name="start_date" value="<?php echo date('Y-m-d', strtotime('+1 week')); ?>" required>
@@ -288,5 +324,21 @@ $schedule_full = ($current_rr_match_count >= $total_expected_matches && $total_e
 
         <p><a href="view_league.php?id=<?php echo $league_id; ?>">← Back to League</a></p>
     </div>
+
+    <script>
+        function toggleCustomRounds() {
+            var formatSelect = document.getElementById('matchFormatSelect');
+            var customGroup = document.getElementById('customRoundsGroup');
+            var customInput = document.getElementById('customRoundsInput');
+
+            if (formatSelect.value === 'custom') {
+                customGroup.style.display = 'inline-block';
+                customInput.setAttribute('required', 'required');
+            } else {
+                customGroup.style.display = 'none';
+                customInput.removeAttribute('required');
+            }
+        }
+    </script>
 </body>
 </html>
