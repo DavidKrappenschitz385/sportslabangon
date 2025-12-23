@@ -46,8 +46,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_league'])) {
     $rules = trim($_POST['rules']);
     $status = $_POST['status'];
     $league_type = $_POST['league_type'];
-    $round_robin_rounds = $_POST['round_robin_rounds'];
-    $knockout_teams = $_POST['knockout_teams'];
+    $round_robin_rounds = !empty($_POST['round_robin_rounds']) ? (int)$_POST['round_robin_rounds'] : 1;
+    $knockout_teams = !empty($_POST['knockout_teams']) ? (int)$_POST['knockout_teams'] : 0;
 
     // Validation
     $errors = [];
