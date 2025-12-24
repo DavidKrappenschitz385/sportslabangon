@@ -315,59 +315,111 @@ class LeagueManager {
         // If scoreA=1, scoreB=0. 0 - 1 = -1. Correct.
     }
 
-    // --- Additional Formats Placeholders ---
+    // --- Additional Formats Implementation ---
+
+    /**
+     * Helper to get standard bracket seeding indices.
+     * e.g. for 8 teams: [1, 8, 4, 5, 2, 7, 3, 6] (1-based)
+     */
+    private function getBracketSeedings($num_slots) {
+        // Base case: 2 slots [1, 2]
+        $rounds = ceil(log($num_slots, 2));
+        $seeds = [1, 2];
+
+        for ($i = 0; $i < $rounds - 1; $i++) {
+            $next_seeds = [];
+            $current_size = count($seeds) * 2;
+            foreach ($seeds as $seed) {
+                $next_seeds[] = $seed;
+                $next_seeds[] = $current_size + 1 - $seed;
+            }
+            $seeds = $next_seeds;
+        }
+
+        return $seeds;
+    }
 
     public function generatePlayoffs($league_id) {
-        // Fetch qualified teams
-        $league_query = "SELECT knockout_teams FROM leagues WHERE id = :league_id";
+        // Fetch qualified teams and league type
+        $league_query = "SELECT knockout_teams, league_type FROM leagues WHERE id = :league_id";
         $stmt = $this->db->prepare($league_query);
         $stmt->bindParam(':league_id', $league_id);
         $stmt->execute();
         $config = $stmt->fetch(PDO::FETCH_ASSOC);
 
         $num_qualified = $config['knockout_teams'] ?? 0;
-        if ($num_qualified == 0) return []; // No playoffs configured
+        if ($num_qualified < 2) return []; // Need at least 2 teams
 
+        // Ensure number of qualified teams is a power of 2 for clean bracket generation
+        // If not, we round down to the nearest power of 2 (e.g., 6 -> 4, 12 -> 8)
+        // This avoids handling "Byes" which would require NULLable team IDs in matches table (currently NOT NULL)
+        $pow2 = floor(log($num_qualified, 2));
+        $num_qualified_pow2 = pow(2, $pow2);
+
+        // Fetch standings to get top N teams
         $standings = $this->getStandings($league_id);
-        $qualified_teams = array_slice($standings, 0, $num_qualified);
+        $qualified_teams = array_slice($standings, 0, $num_qualified_pow2);
 
-        // Seed teams: 1 vs 8, 2 vs 7, etc. (standard snake)
-        // Or standard bracket: 1 vs 8, 4 vs 5, 2 vs 7, 3 vs 6
-        // Let's implement standard bracket seeding for top 4 or 8.
+        $league_type = $config['league_type'] ?? 'single_elimination';
+        // If league is round_robin, we default to single elimination for the playoff phase
+        // unless we want to support double elimination playoffs for RR leagues.
+        // For now, let's assume 'double_elimination' in league_type means the WHOLE league is double elim,
+        // but if we are generating playoffs from RR, it's typically Single Elim.
+        // However, if the user explicitly set Double Elim type, we should respect it.
+
+        if ($league_type == 'double_elimination') {
+             return $this->generateDoubleElimination($qualified_teams);
+        }
+
+        return $this->generateSingleElimination($qualified_teams);
+    }
+
+    public function generateSingleElimination($teams) {
+        $num_teams = count($teams);
+        if ($num_teams < 2) return [];
+
+        // Determine bracket size (next power of 2)
+        $rounds = ceil(log($num_teams, 2));
+        $bracket_size = pow(2, $rounds);
+
+        // Get seeding order
+        $seed_indices = $this->getBracketSeedings($bracket_size);
+
+        // Pad teams with nulls for Byes
+        $padded_teams = $teams;
+        while (count($padded_teams) < $bracket_size) {
+            $padded_teams[] = null; // Bye
+        }
+
+        // Determine match type string
+        $match_type = 'playoff';
+        if ($bracket_size == 2) $match_type = 'final';
+        elseif ($bracket_size == 4) $match_type = 'semi_final';
+        elseif ($bracket_size == 8) $match_type = 'quarter_final';
 
         $matches = [];
 
-        if ($num_qualified == 4) {
-             // Semis: 1 vs 4, 2 vs 3
-             $matches[] = [
-                 'home_team_id' => $qualified_teams[0]['id'],
-                 'away_team_id' => $qualified_teams[3]['id'],
-                 'round' => 1, // Round 1 of playoffs
-                 'match_type' => 'semi_final',
-                 'bracket_pos' => 1
-             ];
-             $matches[] = [
-                 'home_team_id' => $qualified_teams[1]['id'],
-                 'away_team_id' => $qualified_teams[2]['id'],
-                 'round' => 1,
-                 'match_type' => 'semi_final',
-                 'bracket_pos' => 2
-             ];
-        } elseif ($num_qualified == 8) {
-            // Quarters
-            // Match 1: 1 vs 8
-            // Match 2: 4 vs 5
-            // Match 3: 2 vs 7
-            // Match 4: 3 vs 6
-            $pairings = [[0, 7], [3, 4], [1, 6], [2, 5]];
-            $pos = 1;
-            foreach ($pairings as $pair) {
+        // Generate matches based on seeds
+        // Iterate 2 items at a time from seed_indices
+        for ($i = 0; $i < $bracket_size; $i += 2) {
+            $seed_a = $seed_indices[$i];
+            $seed_b = $seed_indices[$i+1];
+
+            // Indices are 1-based, array is 0-based
+            // Note: $teams is 0-indexed sorted by seed (Rank 1 at index 0)
+            $team_a = $padded_teams[$seed_a - 1] ?? null;
+            $team_b = $padded_teams[$seed_b - 1] ?? null;
+
+            $bracket_pos = ($i / 2) + 1;
+
+            // Only create match if both teams exist (Bye check)
+            if ($team_a !== null && $team_b !== null) {
                 $matches[] = [
-                    'home_team_id' => $qualified_teams[$pair[0]]['id'],
-                    'away_team_id' => $qualified_teams[$pair[1]]['id'],
-                    'round' => 1,
-                    'match_type' => 'quarter_final',
-                    'bracket_pos' => $pos++
+                    'home_team_id' => $team_a['id'],
+                    'away_team_id' => $team_b['id'],
+                    'round' => 1, // Initial round of playoffs
+                    'match_type' => $match_type,
+                    'bracket_pos' => $bracket_pos
                 ];
             }
         }
@@ -375,16 +427,11 @@ class LeagueManager {
         return $matches;
     }
 
-    public function generateSingleElimination($teams) {
-        // Logic for bracket generation
-        // 1. Determine power of 2 size (2, 4, 8, 16...)
-        // 2. Seed teams (random or by rank)
-        // 3. Create matches for Round 1
-        return "Single Elimination Logic Here";
-    }
-
     public function generateDoubleElimination($teams) {
-        return "Double Elimination Logic Here";
+        // Double Elimination starts with the same Upper Bracket structure as Single Elimination
+        // The losers drop to Lower Bracket, which is handled after matches complete.
+        // So we just generate the initial Upper Bracket matches.
+        return $this->generateSingleElimination($teams);
     }
 }
 ?>
