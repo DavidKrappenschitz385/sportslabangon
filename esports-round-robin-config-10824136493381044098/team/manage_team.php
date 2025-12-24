@@ -39,9 +39,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_status'])) {
     $update_stmt->bindParam(':id', $team_id);
     $update_stmt->execute();
 
+    // Update registration deadline
+    $new_deadline = !empty($_POST['registration_deadline']) ? $_POST['registration_deadline'] : null;
+    $deadline_query = "UPDATE teams SET registration_deadline = :deadline WHERE id = :id";
+    $deadline_stmt = $db->prepare($deadline_query);
+    if ($new_deadline) {
+        $deadline_stmt->bindParam(':deadline', $new_deadline);
+    } else {
+        $deadline_stmt->bindValue(':deadline', null, PDO::PARAM_NULL);
+    }
+    $deadline_stmt->bindParam(':id', $team_id);
+    $deadline_stmt->execute();
+
     // Refresh team data
     $team['recruitment_status'] = $new_status;
-    showMessage("Team status updated!", "success");
+    $team['registration_deadline'] = $new_deadline;
+    showMessage("Team status and deadline updated!", "success");
 }
 
 // Handle request approval/rejection
@@ -292,13 +305,23 @@ $request_history = $history_stmt->fetchAll(PDO::FETCH_ASSOC);
                 <div>
                     <h2><?php echo htmlspecialchars($team['name']); ?></h2>
                     <div class="status-form">
-                        <form method="POST" style="display: flex; align-items: center; gap: 10px; margin: 0;">
-                            <label><strong>Recruitment Status:</strong></label>
-                            <select name="recruitment_status" onchange="this.form.submit()" style="padding: 5px; border-radius: 3px;">
-                                <option value="open" <?php echo ($team['recruitment_status'] ?? 'open') == 'open' ? 'selected' : ''; ?>>Open (Accepting Players)</option>
-                                <option value="closed" <?php echo ($team['recruitment_status'] ?? 'open') == 'closed' ? 'selected' : ''; ?>>Closed (Not Accepting)</option>
-                            </select>
-                            <input type="hidden" name="update_status" value="1">
+                        <form method="POST" style="display: flex; align-items: center; gap: 10px; margin: 0; flex-wrap: wrap;">
+                            <div>
+                                <label><strong>Status:</strong></label>
+                                <select name="recruitment_status" style="padding: 5px; border-radius: 3px;">
+                                    <option value="open" <?php echo ($team['recruitment_status'] ?? 'open') == 'open' ? 'selected' : ''; ?>>Open</option>
+                                    <option value="closed" <?php echo ($team['recruitment_status'] ?? 'open') == 'closed' ? 'selected' : ''; ?>>Closed</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label><strong>Deadline:</strong></label>
+                                <input type="date" name="registration_deadline"
+                                       value="<?php echo $team['registration_deadline'] ? date('Y-m-d', strtotime($team['registration_deadline'])) : ''; ?>"
+                                       style="padding: 4px; border-radius: 3px; border: 1px solid #ccc;">
+                            </div>
+
+                            <button type="submit" name="update_status" class="btn btn-primary" style="padding: 4px 12px; font-size: 14px;">Update</button>
                         </form>
                     </div>
                 </div>
