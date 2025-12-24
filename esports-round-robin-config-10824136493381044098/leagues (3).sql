@@ -581,7 +581,7 @@ CREATE TABLE `registration_requests` (
   `age` int(11) DEFAULT NULL,
   `birthday` date DEFAULT NULL,
   `team_id` int(11) NOT NULL,
-  `league_id` int(11) NOT NULL,
+  `league_id` int(11) DEFAULT NULL,
   `preferred_position` varchar(50) DEFAULT NULL,
   `message` text DEFAULT NULL,
   `document_path` varchar(500) DEFAULT NULL,
@@ -652,7 +652,8 @@ CREATE TABLE `teams` (
   `goals_against` int(11) DEFAULT 0,
   `matches_played` int(11) DEFAULT 0,
   `score_difference` int(11) DEFAULT 0,
-  `recruitment_status` enum('open','closed') DEFAULT 'open'
+  `recruitment_status` enum('open','closed') DEFAULT 'open',
+  `registration_deadline` datetime DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
