@@ -172,8 +172,8 @@ if ($sport_filter) {
     $params[':sport_id'] = $sport_filter;
 }
 
-// Filter by recruitment status
-$where_conditions[] = "(t.recruitment_status = 'open' OR t.recruitment_status IS NULL)";
+// Filter by recruitment status - REMOVED to show closed teams
+// $where_conditions[] = "(t.recruitment_status = 'open' OR t.recruitment_status IS NULL)";
 
 // Exclude teams user already owns or is member of
 $where_conditions[] = "t.owner_id != :user_id";
@@ -187,7 +187,8 @@ $where_clause = "WHERE " . implode(" AND ", $where_conditions);
 // Get available teams
 $teams_query = "SELECT t.*, l.name as league_name, l.season, l.status as league_status,
                        l.registration_deadline as league_registration_deadline, l.max_teams,
-                       s.name as sport_name, s.max_players_per_team,
+                       COALESCE(s.name, s_team.name) as sport_name,
+                       COALESCE(s.max_players_per_team, s_team.max_players_per_team) as max_players_per_team,
                        u.first_name as owner_first_name, u.last_name as owner_last_name, u.username as owner_username,
                        (SELECT COUNT(*) FROM team_members WHERE team_id = t.id AND status = 'active') as member_count,
                        (SELECT COUNT(*) FROM registration_requests WHERE team_id = t.id AND status = 'pending') as pending_requests,
@@ -195,6 +196,7 @@ $teams_query = "SELECT t.*, l.name as league_name, l.season, l.status as league_
                 FROM teams t
                 LEFT JOIN leagues l ON t.league_id = l.id
                 LEFT JOIN sports s ON l.sport_id = s.id
+                LEFT JOIN sports s_team ON t.sport_id = s_team.id
                 JOIN users u ON t.owner_id = u.id
                 $where_clause
                 ORDER BY l.status DESC, t.created_at DESC";
@@ -572,10 +574,16 @@ $user_teams_count = $user_teams_stmt->fetchColumn();
 
                     $has_pending = $team['user_has_pending'] > 0;
 
-                    // Determine deadline: prioritized team's deadline, then league's deadline
+                    // Determine deadline
                     $effective_deadline = $team['registration_deadline']; // Team specific deadline
+
+                    // Logic fix: Only use league deadline if team does NOT have an explicit deadline AND status is NOT 'open'
+                    // If team is 'open' with no deadline, it should stay open regardless of league deadline (which is for team reg)
+                    // If team is 'open' WITH deadline, respect that deadline.
                     if (empty($effective_deadline)) {
-                        $effective_deadline = $team['league_registration_deadline']; // League deadline fallback
+                        if ($team['recruitment_status'] !== 'open') {
+                             $effective_deadline = $team['league_registration_deadline']; // League deadline fallback
+                        }
                     }
 
                     // If effective_deadline is null, treat as open (false)
@@ -637,6 +645,10 @@ $user_teams_count = $user_teams_stmt->fetchColumn();
                         <?php elseif ($is_full): ?>
                             <button class="join-btn" disabled style="flex: 1;">
                                 Team Full
+                            </button>
+                        <?php elseif ($team['recruitment_status'] === 'closed'): ?>
+                            <button class="join-btn" disabled style="flex: 1;">
+                                Registration Closed
                             </button>
                         <?php elseif ($deadline_passed): ?>
                             <button class="join-btn" disabled style="flex: 1;">
