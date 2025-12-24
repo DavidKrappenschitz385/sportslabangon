@@ -40,7 +40,7 @@ if ($user['role'] == 'admin') {
     $teams_query = "SELECT t.*, l.name as league_name, l.season, 
                            (SELECT COUNT(*) FROM team_members WHERE team_id = t.id AND status = 'active') as member_count
                     FROM teams t 
-                    JOIN leagues l ON t.league_id = l.id 
+                    LEFT JOIN leagues l ON t.league_id = l.id
                     WHERE t.owner_id = :user_id OR t.id IN (
                         SELECT team_id FROM team_members WHERE player_id = :user_id AND status = 'active'
                     )";
