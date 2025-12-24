@@ -1,7 +1,7 @@
 <?php
 // team/register_team.php - Team Registration Request Form
 require_once '../config/database.php';
-requireRole('team_owner');
+requireLogin(); // Changed from requireRole('team_owner') to allow new users to register
 
 $database = new Database();
 $db = $database->connect();
@@ -101,6 +101,16 @@ if (isset($_POST['submit_request'])) {
 
             if ($team_stmt->execute()) {
                 $team_id = $db->lastInsertId();
+
+                // Update user role to team_owner if they are not admin
+                if ($current_user['role'] != 'admin' && $current_user['role'] != 'team_owner') {
+                    $update_role = "UPDATE users SET role = 'team_owner' WHERE id = :user_id";
+                    $role_stmt = $db->prepare($update_role);
+                    $role_stmt->bindParam(':user_id', $current_user['id']);
+                    $role_stmt->execute();
+                    $_SESSION['role'] = 'team_owner';
+                }
+
                 showMessage("Team registered successfully!", "success");
                 echo '<script>setTimeout(function(){ window.location.href = "../team/view_team.php?id=' . $team_id . '"; }, 2000);</script>';
             } else {
