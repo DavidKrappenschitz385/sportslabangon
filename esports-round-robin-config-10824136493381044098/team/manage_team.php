@@ -13,8 +13,8 @@ $team_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 // Get team details and verify ownership
 $team_query = "SELECT t.*, l.name as league_name, l.season, s.name as sport_name, u.username as owner_username
                FROM teams t
-               JOIN leagues l ON t.league_id = l.id
-               JOIN sports s ON l.sport_id = s.id
+               LEFT JOIN leagues l ON t.league_id = l.id
+               LEFT JOIN sports s ON l.sport_id = s.id
                JOIN users u ON t.owner_id = u.id
                WHERE t.id = :team_id AND (t.owner_id = :user_id OR :is_admin = 1)";
 $team_stmt = $db->prepare($team_query);
@@ -30,11 +30,25 @@ if (!$team) {
     redirect('../dashboard.php');
 }
 
+// Handle recruitment status update
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_status'])) {
+    $new_status = $_POST['recruitment_status'];
+    $update_query = "UPDATE teams SET recruitment_status = :status WHERE id = :id";
+    $update_stmt = $db->prepare($update_query);
+    $update_stmt->bindParam(':status', $new_status);
+    $update_stmt->bindParam(':id', $team_id);
+    $update_stmt->execute();
+
+    // Refresh team data
+    $team['recruitment_status'] = $new_status;
+    showMessage("Team status updated!", "success");
+}
+
 // Handle request approval/rejection
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['request_id'])) {
     $request_id = intval($_POST['request_id']);
     $action = $_POST['action'];
-    
+
     // Get request details
     $request_query = "SELECT rr.*, u.first_name, u.last_name, u.email
                       FROM registration_requests rr
@@ -45,32 +59,32 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['request_id'])) {
     $request_stmt->bindParam(':team_id', $team_id);
     $request_stmt->execute();
     $request = $request_stmt->fetch(PDO::FETCH_ASSOC);
-    
+
     if ($request) {
         if ($action == 'approve') {
             try {
                 $db->beginTransaction();
-                
+
                 // Add player to team
-                $add_member_query = "INSERT INTO team_members (team_id, player_id, position, joined_at, status) 
+                $add_member_query = "INSERT INTO team_members (team_id, player_id, position, joined_at, status)
                                     VALUES (:team_id, :player_id, :position, NOW(), 'active')";
                 $add_member_stmt = $db->prepare($add_member_query);
                 $add_member_stmt->bindParam(':team_id', $team_id);
                 $add_member_stmt->bindParam(':player_id', $request['player_id']);
                 $add_member_stmt->bindParam(':position', $request['preferred_position']);
                 $add_member_stmt->execute();
-                
+
                 // Update request status
-                $update_query = "UPDATE registration_requests 
-                                SET status = 'approved', processed_at = NOW(), processed_by = :processed_by 
+                $update_query = "UPDATE registration_requests
+                                SET status = 'approved', processed_at = NOW(), processed_by = :processed_by
                                 WHERE id = :id";
                 $update_stmt = $db->prepare($update_query);
                 $update_stmt->bindParam(':processed_by', $user['id']);
                 $update_stmt->bindParam(':id', $request_id);
                 $update_stmt->execute();
-                
+
                 // Create notification for player
-                $notification_query = "INSERT INTO notifications (user_id, title, message, type, created_at) 
+                $notification_query = "INSERT INTO notifications (user_id, title, message, type, created_at)
                                       VALUES (:user_id, :title, :message, 'success', NOW())";
                 $notification_stmt = $db->prepare($notification_query);
                 $notification_stmt->bindParam(':user_id', $request['player_id']);
@@ -79,28 +93,28 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['request_id'])) {
                 $notification_stmt->bindParam(':title', $title);
                 $notification_stmt->bindParam(':message', $message);
                 $notification_stmt->execute();
-                
+
                 $db->commit();
                 showMessage("Player " . $request['first_name'] . " " . $request['last_name'] . " has been added to the team!", "success");
-                
+
             } catch (Exception $e) {
                 $db->rollBack();
                 showMessage("Failed to approve request: " . $e->getMessage(), "error");
             }
-            
+
         } else if ($action == 'reject') {
             try {
                 // Update request status
-                $update_query = "UPDATE registration_requests 
-                                SET status = 'rejected', processed_at = NOW(), processed_by = :processed_by 
+                $update_query = "UPDATE registration_requests
+                                SET status = 'rejected', processed_at = NOW(), processed_by = :processed_by
                                 WHERE id = :id";
                 $update_stmt = $db->prepare($update_query);
                 $update_stmt->bindParam(':processed_by', $user['id']);
                 $update_stmt->bindParam(':id', $request_id);
                 $update_stmt->execute();
-                
+
                 // Create notification for player
-                $notification_query = "INSERT INTO notifications (user_id, title, message, type, created_at) 
+                $notification_query = "INSERT INTO notifications (user_id, title, message, type, created_at)
                                       VALUES (:user_id, :title, :message, 'info', NOW())";
                 $notification_stmt = $db->prepare($notification_query);
                 $notification_stmt->bindParam(':user_id', $request['player_id']);
@@ -109,14 +123,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['request_id'])) {
                 $notification_stmt->bindParam(':title', $title);
                 $notification_stmt->bindParam(':message', $message);
                 $notification_stmt->execute();
-                
+
                 showMessage("Request has been declined.", "info");
-                
+
             } catch (Exception $e) {
                 showMessage("Failed to reject request: " . $e->getMessage(), "error");
             }
         }
-        
+
         // Refresh page
         header("Location: manage_team.php?id=$team_id");
         exit();
@@ -135,7 +149,7 @@ $members_stmt->execute();
 $members = $members_stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Get pending requests
-$requests_query = "SELECT rr.*, u.username, u.first_name, u.last_name, u.email
+$requests_query = "SELECT rr.*, u.username, u.first_name, u.last_name, u.email, u.id as user_id
                    FROM registration_requests rr
                    JOIN users u ON rr.player_id = u.id
                    WHERE rr.team_id = :team_id AND rr.status = 'pending'
@@ -144,6 +158,17 @@ $requests_stmt = $db->prepare($requests_query);
 $requests_stmt->bindParam(':team_id', $team_id);
 $requests_stmt->execute();
 $pending_requests = $requests_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Get request history
+$history_query = "SELECT rr.*, u.first_name, u.last_name, u.username
+                  FROM registration_requests rr
+                  JOIN users u ON rr.player_id = u.id
+                  WHERE rr.team_id = :team_id AND rr.status != 'pending'
+                  ORDER BY rr.processed_at DESC LIMIT 20";
+$history_stmt = $db->prepare($history_query);
+$history_stmt->bindParam(':team_id', $team_id);
+$history_stmt->execute();
+$request_history = $history_stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <!DOCTYPE html>
@@ -163,7 +188,7 @@ $pending_requests = $requests_stmt->fetchAll(PDO::FETCH_ASSOC);
         .info-label { font-size: 12px; color: #666; margin-bottom: 5px; }
         .info-value { font-size: 18px; font-weight: bold; color: #333; }
         .section { background: white; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .section-title { font-size: 1.5rem; margin-bottom: 1rem; color: #333; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem; }
+        .section-title { font-size: 1.5rem; margin-bottom: 1rem; color: #333; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
         .request-card { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; }
         .request-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem; }
         .request-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin: 1rem 0; }
@@ -177,6 +202,7 @@ $pending_requests = $requests_stmt->fetchAll(PDO::FETCH_ASSOC);
         .btn-success { background: #28a745; color: white; }
         .btn-danger { background: #dc3545; color: white; }
         .btn-info { background: #17a2b8; color: white; }
+        .btn-primary { background: #007bff; color: white; }
         .btn:hover { opacity: 0.9; }
         .member-item { background: #f8f9fa; padding: 1rem; border-radius: 4px; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
         .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
@@ -191,26 +217,56 @@ $pending_requests = $requests_stmt->fetchAll(PDO::FETCH_ASSOC);
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         .close { font-size: 28px; font-weight: bold; cursor: pointer; color: #666; }
         .close:hover { color: #000; }
+        .status-form { display: flex; align-items: center; gap: 10px; background: #f8f9fa; padding: 10px; border-radius: 4px; margin-top: 10px; }
+        .tab-nav { display: flex; border-bottom: 1px solid #ddd; margin-bottom: 20px; }
+        .tab-btn { padding: 10px 20px; cursor: pointer; border: none; background: none; font-size: 16px; color: #666; }
+        .tab-btn.active { color: #007bff; border-bottom: 2px solid #007bff; font-weight: bold; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* History Table Styles */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #f8f9fa; color: #333; font-weight: bold; }
+        tr:hover { background-color: #f5f5f5; }
     </style>
     <script>
         function viewRequest(requestId) {
             document.getElementById('requestModal_' + requestId).style.display = 'block';
         }
-        
+
         function closeModal(modalId) {
             document.getElementById(modalId).style.display = 'none';
         }
-        
+
         function confirmAction(requestId, action, playerName) {
             const actionText = action === 'approve' ? 'approve' : 'reject';
             const message = `Are you sure you want to ${actionText} the request from ${playerName}?`;
-            
+
             if (confirm(message)) {
                 document.getElementById('action_' + requestId).value = action;
                 document.getElementById('form_' + requestId).submit();
             }
         }
-        
+
+        function switchTab(tabId) {
+            // Hide all tab contents
+            const contents = document.getElementsByClassName('tab-content');
+            for (let i = 0; i < contents.length; i++) {
+                contents[i].classList.remove('active');
+            }
+
+            // Deactivate all tab buttons
+            const buttons = document.getElementsByClassName('tab-btn');
+            for (let i = 0; i < buttons.length; i++) {
+                buttons[i].classList.remove('active');
+            }
+
+            // Activate selected tab
+            document.getElementById(tabId).classList.add('active');
+            document.getElementById('btn-' + tabId).classList.add('active');
+        }
+
         window.onclick = function(event) {
             if (event.target.className === 'modal') {
                 event.target.style.display = 'none';
@@ -222,29 +278,47 @@ $pending_requests = $requests_stmt->fetchAll(PDO::FETCH_ASSOC);
     <div class="header">
         <h1>Manage Team: <?php echo htmlspecialchars($team['name']); ?></h1>
     </div>
-    
+
     <div class="container">
         <?php displayMessage(); ?>
-        
+
         <p style="margin-bottom: 20px;">
             <a href="../dashboard.php" style="color: #007bff; text-decoration: none;">← Back to Dashboard</a>
         </p>
-        
+
         <!-- Team Overview -->
         <div class="team-header">
-            <h2><?php echo htmlspecialchars($team['name']); ?></h2>
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <h2><?php echo htmlspecialchars($team['name']); ?></h2>
+                    <div class="status-form">
+                        <form method="POST" style="display: flex; align-items: center; gap: 10px; margin: 0;">
+                            <label><strong>Recruitment Status:</strong></label>
+                            <select name="recruitment_status" onchange="this.form.submit()" style="padding: 5px; border-radius: 3px;">
+                                <option value="open" <?php echo ($team['recruitment_status'] ?? 'open') == 'open' ? 'selected' : ''; ?>>Open (Accepting Players)</option>
+                                <option value="closed" <?php echo ($team['recruitment_status'] ?? 'open') == 'closed' ? 'selected' : ''; ?>>Closed (Not Accepting)</option>
+                            </select>
+                            <input type="hidden" name="update_status" value="1">
+                        </form>
+                    </div>
+                </div>
+                <?php if (!$team['league_id']): ?>
+                    <a href="../league/browse_leagues.php" class="btn btn-success">Join a League</a>
+                <?php endif; ?>
+            </div>
+
             <div class="team-info">
                 <div class="info-item">
                     <div class="info-label">League</div>
-                    <div class="info-value"><?php echo htmlspecialchars($team['league_name']); ?></div>
+                    <div class="info-value"><?php echo htmlspecialchars($team['league_name'] ?? 'Not in a league'); ?></div>
                 </div>
                 <div class="info-item">
                     <div class="info-label">Sport</div>
-                    <div class="info-value"><?php echo htmlspecialchars($team['sport_name']); ?></div>
+                    <div class="info-value"><?php echo htmlspecialchars($team['sport_name'] ?? 'N/A'); ?></div>
                 </div>
                 <div class="info-item">
                     <div class="info-label">Season</div>
-                    <div class="info-value"><?php echo htmlspecialchars($team['season']); ?></div>
+                    <div class="info-value"><?php echo htmlspecialchars($team['season'] ?? 'N/A'); ?></div>
                 </div>
                 <div class="info-item">
                     <div class="info-label">Record</div>
@@ -260,16 +334,24 @@ $pending_requests = $requests_stmt->fetchAll(PDO::FETCH_ASSOC);
                 </div>
             </div>
         </div>
-        
-        <!-- Pending Requests Section -->
-        <div class="section">
+
+        <!-- Navigation Tabs -->
+        <div class="tab-nav">
+            <button id="btn-requests" class="tab-btn active" onclick="switchTab('requests')">Requests (<?php echo count($pending_requests); ?>)</button>
+            <button id="btn-members" class="tab-btn" onclick="switchTab('members')">Members (<?php echo count($members); ?>)</button>
+            <button id="btn-history" class="tab-btn" onclick="switchTab('history')">History</button>
+            <button id="btn-messages" class="tab-btn" onclick="switchTab('messages')">Messages</button>
+        </div>
+
+        <!-- Pending Requests Tab -->
+        <div id="requests" class="tab-content active section">
             <div class="section-title">
-                Pending Join Requests 
+                Pending Join Requests
                 <?php if (count($pending_requests) > 0): ?>
                     <span class="badge badge-warning"><?php echo count($pending_requests); ?> pending</span>
                 <?php endif; ?>
             </div>
-            
+
             <?php if (count($pending_requests) > 0): ?>
                 <?php foreach ($pending_requests as $request): ?>
                     <div class="request-card">
@@ -277,18 +359,19 @@ $pending_requests = $requests_stmt->fetchAll(PDO::FETCH_ASSOC);
                             <div>
                                 <h3><?php echo htmlspecialchars($request['full_name']); ?></h3>
                                 <p style="color: #666; font-size: 14px;">
-                                    Username: <?php echo htmlspecialchars($request['username']); ?> | 
+                                    Username: <?php echo htmlspecialchars($request['username']); ?> |
                                     Email: <?php echo htmlspecialchars($request['email']); ?>
                                 </p>
                                 <p style="color: #666; font-size: 12px; margin-top: 5px;">
                                     Requested on: <?php echo date('M j, Y g:i A', strtotime($request['created_at'])); ?>
                                 </p>
                             </div>
-                            <div>
+                            <div style="display: flex; gap: 5px;">
+                                <a href="messages.php?recipient_id=<?php echo $request['user_id']; ?>&team_id=<?php echo $team_id; ?>" class="btn btn-primary">Message</a>
                                 <button onclick="viewRequest(<?php echo $request['id']; ?>)" class="btn btn-info">View Details</button>
                             </div>
                         </div>
-                        
+
                         <div class="request-details">
                             <div class="detail-item">
                                 <div class="detail-label">Age</div>
@@ -303,12 +386,12 @@ $pending_requests = $requests_stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <div class="detail-value"><?php echo htmlspecialchars($request['preferred_position']); ?></div>
                             </div>
                         </div>
-                        
+
                         <div style="margin-top: 1rem;">
                             <form id="form_<?php echo $request['id']; ?>" method="POST" style="display: inline;">
                                 <input type="hidden" name="request_id" value="<?php echo $request['id']; ?>">
                                 <input type="hidden" id="action_<?php echo $request['id']; ?>" name="action" value="">
-                                
+
                                 <button type="button" onclick="confirmAction(<?php echo $request['id']; ?>, 'approve', '<?php echo htmlspecialchars($request['full_name'], ENT_QUOTES); ?>')" class="btn btn-success">
                                     Approve Request
                                 </button>
@@ -318,7 +401,7 @@ $pending_requests = $requests_stmt->fetchAll(PDO::FETCH_ASSOC);
                             </form>
                         </div>
                     </div>
-                    
+
                     <!-- Request Details Modal -->
                     <div id="requestModal_<?php echo $request['id']; ?>" class="modal">
                         <div class="modal-content">
@@ -326,55 +409,25 @@ $pending_requests = $requests_stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <h3>Request Details: <?php echo htmlspecialchars($request['full_name']); ?></h3>
                                 <span class="close" onclick="closeModal('requestModal_<?php echo $request['id']; ?>')">&times;</span>
                             </div>
-                            
+
                             <div style="margin-bottom: 1.5rem;">
-                                <div class="detail-item">
-                                    <div class="detail-label">Full Name</div>
-                                    <div class="detail-value"><?php echo htmlspecialchars($request['full_name']); ?></div>
-                                </div>
-                                
-                                <div class="detail-item">
-                                    <div class="detail-label">Username</div>
-                                    <div class="detail-value"><?php echo htmlspecialchars($request['username']); ?></div>
-                                </div>
-                                
-                                <div class="detail-item">
-                                    <div class="detail-label">Email</div>
-                                    <div class="detail-value"><?php echo htmlspecialchars($request['email']); ?></div>
-                                </div>
-                                
-                                <div class="detail-item">
-                                    <div class="detail-label">Birthday</div>
-                                    <div class="detail-value"><?php echo date('F j, Y', strtotime($request['birthday'])); ?></div>
-                                </div>
-                                
-                                <div class="detail-item">
-                                    <div class="detail-label">Age</div>
-                                    <div class="detail-value"><?php echo $request['age']; ?> years old</div>
-                                </div>
-                                
-                                <div class="detail-item">
-                                    <div class="detail-label">Current Address</div>
-                                    <div class="detail-value"><?php echo htmlspecialchars($request['current_address']); ?></div>
-                                </div>
-                                
-                                <div class="detail-item">
-                                    <div class="detail-label">Sitio/Purok</div>
-                                    <div class="detail-value"><?php echo htmlspecialchars($request['sitio']); ?></div>
-                                </div>
-                                
-                                <div class="detail-item">
-                                    <div class="detail-label">Preferred Position</div>
-                                    <div class="detail-value"><?php echo htmlspecialchars($request['preferred_position']); ?></div>
-                                </div>
-                                
+                                <!-- Details same as before -->
+                                <div class="detail-item"><div class="detail-label">Full Name</div><div class="detail-value"><?php echo htmlspecialchars($request['full_name']); ?></div></div>
+                                <div class="detail-item"><div class="detail-label">Username</div><div class="detail-value"><?php echo htmlspecialchars($request['username']); ?></div></div>
+                                <div class="detail-item"><div class="detail-label">Email</div><div class="detail-value"><?php echo htmlspecialchars($request['email']); ?></div></div>
+                                <div class="detail-item"><div class="detail-label">Birthday</div><div class="detail-value"><?php echo date('F j, Y', strtotime($request['birthday'])); ?></div></div>
+                                <div class="detail-item"><div class="detail-label">Age</div><div class="detail-value"><?php echo $request['age']; ?> years old</div></div>
+                                <div class="detail-item"><div class="detail-label">Current Address</div><div class="detail-value"><?php echo htmlspecialchars($request['current_address']); ?></div></div>
+                                <div class="detail-item"><div class="detail-label">Sitio/Purok</div><div class="detail-value"><?php echo htmlspecialchars($request['sitio']); ?></div></div>
+                                <div class="detail-item"><div class="detail-label">Preferred Position</div><div class="detail-value"><?php echo htmlspecialchars($request['preferred_position']); ?></div></div>
+
                                 <?php if ($request['message']): ?>
                                 <div class="detail-item">
                                     <div class="detail-label">Message</div>
                                     <div class="detail-value"><?php echo nl2br(htmlspecialchars($request['message'])); ?></div>
                                 </div>
                                 <?php endif; ?>
-                                
+
                                 <?php if ($request['document_path']): ?>
                                 <div class="document-preview">
                                     <div class="detail-label">PSA/NSO Birth Certificate</div>
@@ -384,12 +437,12 @@ $pending_requests = $requests_stmt->fetchAll(PDO::FETCH_ASSOC);
                                 </div>
                                 <?php endif; ?>
                             </div>
-                            
+
                             <div style="border-top: 1px solid #e9ecef; padding-top: 1rem;">
                                 <p style="font-size: 12px; color: #666; margin-bottom: 1rem;">
                                     Requested on: <?php echo date('F j, Y g:i A', strtotime($request['created_at'])); ?>
                                 </p>
-                                
+
                                 <button type="button" onclick="confirmAction(<?php echo $request['id']; ?>, 'approve', '<?php echo htmlspecialchars($request['full_name'], ENT_QUOTES); ?>')" class="btn btn-success">
                                     Approve Request
                                 </button>
@@ -409,26 +462,27 @@ $pending_requests = $requests_stmt->fetchAll(PDO::FETCH_ASSOC);
                 </div>
             <?php endif; ?>
         </div>
-        
-        <!-- Team Members Section -->
-        <div class="section">
+
+        <!-- Team Members Tab -->
+        <div id="members" class="tab-content section">
             <div class="section-title">
-                Team Members 
+                Team Members
                 <span class="badge badge-success"><?php echo count($members); ?> members</span>
             </div>
-            
+
             <?php if (count($members) > 0): ?>
                 <?php foreach ($members as $member): ?>
                     <div class="member-item">
                         <div>
                             <strong><?php echo htmlspecialchars($member['first_name'] . ' ' . $member['last_name']); ?></strong><br>
                             <small style="color: #666;">
-                                <?php echo htmlspecialchars($member['username']); ?> | 
-                                Position: <?php echo htmlspecialchars($member['position']); ?> | 
+                                <?php echo htmlspecialchars($member['username']); ?> |
+                                Position: <?php echo htmlspecialchars($member['position']); ?> |
                                 Joined: <?php echo date('M j, Y', strtotime($member['joined_at'])); ?>
                             </small>
                         </div>
                         <div>
+                            <a href="messages.php?recipient_id=<?php echo $member['player_id']; ?>&team_id=<?php echo $team_id; ?>" class="btn btn-primary" style="padding: 4px 8px; font-size: 12px;">Message</a>
                             <span class="badge badge-success">Active</span>
                         </div>
                     </div>
@@ -437,6 +491,77 @@ $pending_requests = $requests_stmt->fetchAll(PDO::FETCH_ASSOC);
                 <div class="alert alert-info">
                     No team members yet. Approve join requests to build your team!
                 </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- History Tab -->
+        <div id="history" class="tab-content section">
+            <div class="section-title">Request History</div>
+
+            <?php if (count($request_history) > 0): ?>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Player</th>
+                            <th>Status</th>
+                            <th>Processed At</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($request_history as $req): ?>
+                        <tr>
+                            <td><?php echo htmlspecialchars($req['first_name'] . ' ' . $req['last_name']); ?> (@<?php echo htmlspecialchars($req['username']); ?>)</td>
+                            <td>
+                                <span class="badge <?php echo $req['status'] == 'approved' ? 'badge-success' : ($req['status'] == 'rejected' ? 'badge-warning' : ''); ?>" style="<?php echo $req['status'] == 'rejected' ? 'background: #dc3545; color: white;' : ''; ?>">
+                                    <?php echo ucfirst($req['status']); ?>
+                                </span>
+                            </td>
+                            <td><?php echo date('M j, Y g:i A', strtotime($req['processed_at'])); ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php else: ?>
+                <div class="alert alert-info">No history available.</div>
+            <?php endif; ?>
+        </div>
+
+        <!-- Messages Tab -->
+        <div id="messages" class="tab-content section">
+            <div class="section-title">Team Messages</div>
+            <p><a href="messages.php?team_id=<?php echo $team_id; ?>" class="btn btn-primary">Open Messenger</a></p>
+
+            <?php
+            // Get recent conversations for this team
+            $msg_query = "SELECT DISTINCT u.id, u.first_name, u.last_name,
+                          (SELECT message FROM messages WHERE (sender_id = u.id AND receiver_id = :owner_id AND team_id = :team_id) OR (sender_id = :owner_id AND receiver_id = u.id AND team_id = :team_id) ORDER BY created_at DESC LIMIT 1) as last_message,
+                          (SELECT created_at FROM messages WHERE (sender_id = u.id AND receiver_id = :owner_id AND team_id = :team_id) OR (sender_id = :owner_id AND receiver_id = u.id AND team_id = :team_id) ORDER BY created_at DESC LIMIT 1) as last_date
+                          FROM users u
+                          JOIN messages m ON (u.id = m.sender_id OR u.id = m.receiver_id)
+                          WHERE m.team_id = :team_id AND u.id != :owner_id
+                          ORDER BY last_date DESC";
+            $msg_stmt = $db->prepare($msg_query);
+            $msg_stmt->bindParam(':team_id', $team_id);
+            $msg_stmt->bindParam(':owner_id', $user['id']);
+            $msg_stmt->execute();
+            $conversations = $msg_stmt->fetchAll(PDO::FETCH_ASSOC);
+            ?>
+
+            <?php if (count($conversations) > 0): ?>
+                <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
+                <?php foreach ($conversations as $conv): ?>
+                    <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #e9ecef;">
+                        <div>
+                            <strong><?php echo htmlspecialchars($conv['first_name'] . ' ' . $conv['last_name']); ?></strong>
+                            <p style="margin: 5px 0; color: #666; font-size: 0.9em;"><?php echo htmlspecialchars(substr($conv['last_message'], 0, 80)) . (strlen($conv['last_message']) > 80 ? '...' : ''); ?></p>
+                            <small style="color: #999;"><?php echo date('M j, g:i A', strtotime($conv['last_date'])); ?></small>
+                        </div>
+                        <a href="messages.php?recipient_id=<?php echo $conv['id']; ?>&team_id=<?php echo $team_id; ?>" class="btn btn-info">Reply</a>
+                    </div>
+                <?php endforeach; ?>
+                </div>
+            <?php else: ?>
+                <p>No messages yet.</p>
             <?php endif; ?>
         </div>
     </div>

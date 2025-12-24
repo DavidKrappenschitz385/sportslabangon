@@ -234,7 +234,11 @@ if ($user['role'] == 'admin') {
                         <div class="team-item">
                             <div>
                                 <strong><?php echo htmlspecialchars($team['name']); ?></strong><br>
-                                <small><?php echo htmlspecialchars($team['league_name']); ?> - <?php echo htmlspecialchars($team['season']); ?></small><br>
+                                <?php if ($team['league_name']): ?>
+                                    <small><?php echo htmlspecialchars($team['league_name']); ?> - <?php echo htmlspecialchars($team['season']); ?></small><br>
+                                <?php else: ?>
+                                    <small style="color: #dc3545;">Not in a league</small><br>
+                                <?php endif; ?>
                                 <small>Record: <?php echo $team['wins']; ?>W-<?php echo $team['draws']; ?>D-<?php echo $team['losses']; ?>L (<?php echo $team['points']; ?> pts)</small>
                             </div>
                             <div>

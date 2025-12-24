@@ -651,7 +651,8 @@ CREATE TABLE `teams` (
   `goals_for` int(11) DEFAULT 0,
   `goals_against` int(11) DEFAULT 0,
   `matches_played` int(11) DEFAULT 0,
-  `score_difference` int(11) DEFAULT 0
+  `score_difference` int(11) DEFAULT 0,
+  `recruitment_status` enum('open','closed') DEFAULT 'open'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -672,6 +673,22 @@ INSERT INTO `teams` (`id`, `name`, `league_id`, `owner_id`, `description`, `logo
 (14, 'Team BLUE', 21, 8, NULL, NULL, 0, 0, 0, 0, '2025-10-05 06:54:52', 0, 0),
 (15, 'DV', 23, 3, NULL, NULL, 0, 0, 0, 0, '2025-10-11 04:41:20', 0, 0),
 (16, 'CEC BLUE DRAGONS', 24, 3, NULL, NULL, 0, 0, 0, 0, '2025-10-16 02:22:20', 0, 0);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `messages`
+--
+
+CREATE TABLE `messages` (
+  `id` int(11) NOT NULL,
+  `sender_id` int(11) NOT NULL,
+  `receiver_id` int(11) NOT NULL,
+  `team_id` int(11) DEFAULT NULL,
+  `message` text NOT NULL,
+  `is_read` tinyint(1) DEFAULT 0,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -853,6 +870,15 @@ ALTER TABLE `matches`
   ADD KEY `venue_id` (`venue_id`);
 
 --
+-- Indexes for table `messages`
+--
+ALTER TABLE `messages`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `sender_id` (`sender_id`),
+  ADD KEY `receiver_id` (`receiver_id`),
+  ADD KEY `team_id` (`team_id`);
+
+--
 -- Indexes for table `notifications`
 --
 ALTER TABLE `notifications`
@@ -953,6 +979,12 @@ ALTER TABLE `matches`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `messages`
+--
+ALTER TABLE `messages`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `notifications`
 --
 ALTER TABLE `notifications`
@@ -1031,6 +1063,14 @@ ALTER TABLE `matches`
   ADD CONSTRAINT `matches_ibfk_2` FOREIGN KEY (`home_team_id`) REFERENCES `teams` (`id`),
   ADD CONSTRAINT `matches_ibfk_3` FOREIGN KEY (`away_team_id`) REFERENCES `teams` (`id`),
   ADD CONSTRAINT `matches_ibfk_4` FOREIGN KEY (`venue_id`) REFERENCES `venues` (`id`);
+
+--
+-- Constraints for table `messages`
+--
+ALTER TABLE `messages`
+  ADD CONSTRAINT `messages_ibfk_1` FOREIGN KEY (`sender_id`) REFERENCES `users` (`id`),
+  ADD CONSTRAINT `messages_ibfk_2` FOREIGN KEY (`receiver_id`) REFERENCES `users` (`id`),
+  ADD CONSTRAINT `messages_ibfk_3` FOREIGN KEY (`team_id`) REFERENCES `teams` (`id`);
 
 --
 -- Constraints for table `notifications`
