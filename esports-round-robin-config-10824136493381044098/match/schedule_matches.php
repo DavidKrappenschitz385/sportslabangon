@@ -42,8 +42,59 @@ $venues = $venues_stmt->fetchAll(PDO::FETCH_ASSOC);
 // Initialize round_robin_rounds from league data
 $round_robin_rounds = $league['round_robin_rounds'] ?? 1;
 
+$preview_matches = []; // Array to store matches for preview
+
+// Handle "Clear Schedule"
+if ($_POST && isset($_POST['clear_schedule'])) {
+    // Only delete 'scheduled' matches to preserve history of completed games
+    $delete_query = "DELETE FROM matches WHERE league_id = :league_id AND status = 'scheduled' AND match_type = 'round_robin'";
+    $delete_stmt = $db->prepare($delete_query);
+    $delete_stmt->bindParam(':league_id', $league_id);
+
+    if ($delete_stmt->execute()) {
+        $deleted_count = $delete_stmt->rowCount();
+        showMessage("Schedule cleared! $deleted_count scheduled matches were removed. Completed matches were preserved.", "success");
+    } else {
+        showMessage("Error clearing schedule.", "error");
+    }
+    redirect("schedule_matches.php?league_id=$league_id");
+}
+
+// Handle "Confirm Schedule" (Insert from Preview)
+if ($_POST && isset($_POST['confirm_schedule'])) {
+    $matches_to_insert = $_POST['matches'] ?? [];
+    $inserted_count = 0;
+
+    foreach ($matches_to_insert as $m) {
+        $insert_query = "INSERT INTO matches (league_id, home_team_id, away_team_id, venue_id, match_date, round, match_type, status)
+                        VALUES (:league_id, :home_team_id, :away_team_id, :venue_id, :match_date, :round, 'round_robin', 'scheduled')";
+        $insert_stmt = $db->prepare($insert_query);
+
+        $match_date_fmt = date('Y-m-d H:i:s', strtotime($m['date']));
+        $venue_id = !empty($m['venue_id']) ? $m['venue_id'] : null;
+
+        $insert_stmt->bindParam(':league_id', $league_id);
+        $insert_stmt->bindParam(':home_team_id', $m['home_team_id']);
+        $insert_stmt->bindParam(':away_team_id', $m['away_team_id']);
+        $insert_stmt->bindParam(':venue_id', $venue_id);
+        $insert_stmt->bindParam(':match_date', $match_date_fmt);
+        $insert_stmt->bindParam(':round', $m['round']);
+
+        if ($insert_stmt->execute()) {
+            $inserted_count++;
+        }
+    }
+
+    if ($inserted_count > 0) {
+        showMessage("Schedule confirmed! $inserted_count matches added.", "success");
+    } else {
+        showMessage("No matches were added.", "warning");
+    }
+    redirect('view_league.php?id=' . $league_id);
+}
+
 // Handle form submission for creating matches
-if ($_POST && isset($_POST['create_schedule'])) {
+if ($_POST && isset($_POST['preview_schedule'])) {
     $start_date = $_POST['start_date'];
     $match_interval = $_POST['match_interval']; // days between matches
     $matches_per_day = $_POST['matches_per_day'];
@@ -127,16 +178,16 @@ if ($_POST && isset($_POST['create_schedule'])) {
                             $venue_id = $venue['id'];
                         }
 
-                        $insert_query = "INSERT INTO matches (league_id, home_team_id, away_team_id, venue_id, match_date, round, match_type)
-                                        VALUES (:league_id, :home_team_id, :away_team_id, :venue_id, :match_date, :round, 'round_robin')";
-                        $insert_stmt = $db->prepare($insert_query);
-                        $insert_stmt->bindParam(':league_id', $league_id);
-                        $insert_stmt->bindParam(':home_team_id', $home_team['id']);
-                        $insert_stmt->bindParam(':away_team_id', $away_team['id']);
-                        $insert_stmt->bindParam(':venue_id', $venue_id);
-                        $insert_stmt->bindParam(':match_date', $match_date->format('Y-m-d H:i:s'));
-                        $insert_stmt->bindParam(':round', $round);
-                        $insert_stmt->execute();
+                        // Add to Preview Array instead of DB
+                        $preview_matches[] = [
+                            'home_team_id' => $home_team['id'],
+                            'away_team_id' => $away_team['id'],
+                            'home_team_name' => $home_team['name'],
+                            'away_team_name' => $away_team['name'],
+                            'venue_id' => $venue_id,
+                            'match_date' => $match_date->format('Y-m-d H:i'),
+                            'round' => $round
+                        ];
 
                         $match_counter++;
                         $matches_generated++;
@@ -149,12 +200,9 @@ if ($_POST && isset($_POST['create_schedule'])) {
                 }
             }
 
-            if ($matches_generated > 0) {
-                showMessage("Schedule updated successfully! $matches_generated new matches scheduled.", "success");
-            } else {
+            if ($matches_generated == 0) {
                 showMessage("No new matches were scheduled. All rounds appear to be complete.", "warning");
             }
-            redirect('view_league.php?id=' . $league_id);
         }
     }
 }
@@ -264,9 +312,64 @@ $schedule_full = ($current_rr_match_count >= $total_expected_matches && $total_e
             <p><strong>Current Matches:</strong> <?php echo $current_rr_match_count; ?></p>
         </div>
 
-        <?php if ($schedule_full): ?>
+        <?php if (!empty($preview_matches)): ?>
+        <div class="form-section">
+            <h3>Preview Schedule</h3>
+            <div class="info-box">
+                <p><strong>Preview Mode:</strong> Review the proposed schedule below. You can adjust dates and venues before saving.</p>
+            </div>
+            <form method="POST">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Round</th>
+                            <th>Home Team</th>
+                            <th>Away Team</th>
+                            <th>Date</th>
+                            <th>Venue</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($preview_matches as $k => $m): ?>
+                        <tr>
+                            <td><?php echo $m['round']; ?></td>
+                            <td><?php echo htmlspecialchars($m['home_team_name']); ?></td>
+                            <td><?php echo htmlspecialchars($m['away_team_name']); ?></td>
+                            <td>
+                                <input type="datetime-local" name="matches[<?php echo $k; ?>][date]" value="<?php echo date('Y-m-d\TH:i', strtotime($m['match_date'])); ?>" required>
+                            </td>
+                            <td>
+                                <select name="matches[<?php echo $k; ?>][venue_id]">
+                                    <option value="">-- No Venue --</option>
+                                    <?php foreach ($venues as $v): ?>
+                                    <option value="<?php echo $v['id']; ?>" <?php echo ($m['venue_id'] == $v['id']) ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($v['name']); ?>
+                                    </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <input type="hidden" name="matches[<?php echo $k; ?>][home_team_id]" value="<?php echo $m['home_team_id']; ?>">
+                                <input type="hidden" name="matches[<?php echo $k; ?>][away_team_id]" value="<?php echo $m['away_team_id']; ?>">
+                                <input type="hidden" name="matches[<?php echo $k; ?>][round]" value="<?php echo $m['round']; ?>">
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <br>
+                <button type="submit" name="confirm_schedule" class="btn" style="background: #28a745;">Confirm & Save Schedule</button>
+                <a href="schedule_matches.php?league_id=<?php echo $league_id; ?>" class="btn" style="background: #6c757d;">Cancel</a>
+            </form>
+        </div>
+
+        <?php elseif ($schedule_full): ?>
             <div class="info-box" style="background: #d4edda; border-color: #c3e6cb; color: #155724;">
                 <p><strong>Schedule Complete:</strong> All round-robin matches (<?php echo $total_expected_matches; ?> matches) have been scheduled.</p>
+            </div>
+
+            <div style="margin-top: 10px;">
+                <form method="POST" onsubmit="return confirm('Are you sure you want to clear the schedule? This will delete all SCHEDULED matches. Completed matches will be preserved.');">
+                    <button type="submit" name="clear_schedule" class="btn btn-danger">Clear Schedule</button>
+                </form>
             </div>
         <?php elseif (count($teams) >= 2): ?>
         <div class="form-section">
@@ -312,7 +415,7 @@ $schedule_full = ($current_rr_match_count >= $total_expected_matches && $total_e
                 </div>
 
                 <br>
-                <button type="submit" name="create_schedule" class="btn"><?php echo $current_rr_match_count > 0 ? 'Generate Remaining Matches' : 'Generate Schedule'; ?></button>
+                <button type="submit" name="preview_schedule" class="btn"><?php echo $current_rr_match_count > 0 ? 'Preview Remaining Matches' : 'Preview Schedule'; ?></button>
             </form>
         </div>
         <?php else: ?>
