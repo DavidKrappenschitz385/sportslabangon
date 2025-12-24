@@ -9,21 +9,44 @@ $user = getCurrentUser();
 
 $team_id = $_GET['team_id'] ?? null;
 $recipient_id = $_GET['recipient_id'] ?? null;
+$prefill_message = $_GET['message'] ?? '';
 
 // Handle sending a message
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['send_message'])) {
     $receiver_id = $_POST['receiver_id'];
     $message = trim($_POST['message']);
     $team_id = $_POST['team_id'] ?: null;
+    $attachment_path = null;
 
-    if (!empty($message)) {
-        $query = "INSERT INTO messages (sender_id, receiver_id, team_id, message)
-                  VALUES (:sender_id, :receiver_id, :team_id, :message)";
+    // Handle File Upload
+    if (isset($_FILES['attachment']) && $_FILES['attachment']['error'] == 0) {
+        $upload_dir = '../uploads/attachments/';
+        if (!file_exists($upload_dir)) {
+            mkdir($upload_dir, 0777, true);
+        }
+
+        $file_name = time() . '_' . basename($_FILES['attachment']['name']);
+        $target_file = $upload_dir . $file_name;
+        $file_type = strtolower(pathinfo($target_file, PATHINFO_EXTENSION));
+
+        // Allow certain file formats
+        $allowed_types = ['jpg', 'png', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt'];
+        if (in_array($file_type, $allowed_types)) {
+            if (move_uploaded_file($_FILES['attachment']['tmp_name'], $target_file)) {
+                $attachment_path = 'uploads/attachments/' . $file_name;
+            }
+        }
+    }
+
+    if (!empty($message) || $attachment_path) {
+        $query = "INSERT INTO messages (sender_id, receiver_id, team_id, message, attachment_path)
+                  VALUES (:sender_id, :receiver_id, :team_id, :message, :attachment_path)";
         $stmt = $db->prepare($query);
         $stmt->bindParam(':sender_id', $user['id']);
         $stmt->bindParam(':receiver_id', $receiver_id);
         $stmt->bindParam(':team_id', $team_id);
         $stmt->bindParam(':message', $message);
+        $stmt->bindParam(':attachment_path', $attachment_path);
 
         if ($stmt->execute()) {
             // Redirect to prevent resubmission
@@ -122,6 +145,7 @@ if ($recipient_id) {
 <head>
     <title>Messages - Sports League</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     <style>
         body { font-family: Arial, sans-serif; background: #f5f5f5; margin: 0; }
         .container { display: flex; height: 100vh; max-width: 1200px; margin: 0 auto; background: white; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
@@ -144,11 +168,18 @@ if ($recipient_id) {
         .message-received { align-self: flex-start; background: white; color: #333; border-bottom-left-radius: 5px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
         .message-time { font-size: 0.7em; margin-top: 5px; opacity: 0.7; text-align: right; }
 
+        .attachment { margin-top: 5px; padding: 5px; background: rgba(0,0,0,0.1); border-radius: 5px; }
+        .attachment a { color: inherit; text-decoration: none; display: flex; align-items: center; gap: 5px; }
+        .attachment i { font-size: 1.2em; }
+        .message-sent .attachment { background: rgba(255,255,255,0.2); }
+
         .input-area { padding: 20px; background: white; border-top: 1px solid #ddd; }
-        .input-form { display: flex; gap: 10px; }
+        .input-form { display: flex; gap: 10px; align-items: center; }
         .input-form textarea { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 20px; resize: none; height: 40px; font-family: inherit; }
         .input-form textarea:focus { outline: none; border-color: #007bff; }
-        .send-btn { background: #007bff; color: white; border: none; padding: 0 20px; border-radius: 20px; cursor: pointer; font-weight: bold; }
+        .file-upload-label { cursor: pointer; color: #666; padding: 10px; border-radius: 50%; transition: background 0.2s; }
+        .file-upload-label:hover { background: #f0f0f0; color: #333; }
+        .send-btn { background: #007bff; color: white; border: none; padding: 0 20px; border-radius: 20px; cursor: pointer; font-weight: bold; height: 40px; }
         .send-btn:hover { background: #0056b3; }
 
         .empty-state { flex: 1; display: flex; align-items: center; justify-content: center; color: #999; flex-direction: column; }
@@ -195,6 +226,9 @@ if ($recipient_id) {
                     <div>
                         <a href="messages.php" class="back-link" style="display: none;">← Back</a>
                         <h3 style="margin: 0;"><?php echo htmlspecialchars($recipient['first_name'] . ' ' . $recipient['last_name']); ?></h3>
+                        <?php if ($recipient['role'] == 'admin'): ?>
+                            <span style="font-size: 0.8em; color: #dc3545; font-weight: bold;">Administrator</span>
+                        <?php endif; ?>
                     </div>
                 </div>
 
@@ -202,23 +236,44 @@ if ($recipient_id) {
                     <?php foreach ($messages as $msg): ?>
                         <div class="message-bubble <?php echo ($msg['sender_id'] == $user['id']) ? 'message-sent' : 'message-received'; ?>">
                             <?php echo nl2br(htmlspecialchars($msg['message'])); ?>
+
+                            <?php if (!empty($msg['attachment_path'])): ?>
+                                <div class="attachment">
+                                    <a href="../<?php echo htmlspecialchars($msg['attachment_path']); ?>" download target="_blank">
+                                        <i class="fas fa-file-download"></i> Download Attachment
+                                    </a>
+                                </div>
+                            <?php endif; ?>
+
                             <div class="message-time"><?php echo date('g:i A', strtotime($msg['created_at'])); ?></div>
                         </div>
                     <?php endforeach; ?>
                 </div>
 
                 <div class="input-area">
-                    <form method="POST" class="input-form">
+                    <form method="POST" class="input-form" enctype="multipart/form-data">
                         <input type="hidden" name="receiver_id" value="<?php echo $recipient['id']; ?>">
                         <input type="hidden" name="team_id" value="<?php echo $team_id; ?>">
-                        <textarea name="message" placeholder="Type a message..." required></textarea>
+
+                        <label for="attachment" class="file-upload-label" title="Attach file">
+                            <i class="fas fa-paperclip"></i>
+                        </label>
+                        <input type="file" id="attachment" name="attachment" style="display: none;" onchange="updateFileLabel(this)">
+
+                        <textarea name="message" placeholder="Type a message..." required><?php echo htmlspecialchars($prefill_message); ?></textarea>
                         <button type="submit" name="send_message" class="send-btn">Send</button>
                     </form>
+                    <div id="file-name" style="font-size: 0.8em; color: #666; margin-left: 40px; margin-top: 5px;"></div>
                 </div>
 
                 <script>
                     var messagesList = document.getElementById('messagesList');
                     messagesList.scrollTop = messagesList.scrollHeight;
+
+                    function updateFileLabel(input) {
+                        var fileName = input.files[0] ? input.files[0].name : '';
+                        document.getElementById('file-name').textContent = fileName;
+                    }
 
                     // Show back button on mobile
                     if (window.innerWidth <= 768) {

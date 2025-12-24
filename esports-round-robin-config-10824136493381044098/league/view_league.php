@@ -714,20 +714,26 @@ $can_register = !$user_team && !$pending_request && !$is_full && !$deadline_pass
                 </div>
 
             <?php elseif ($can_register): ?>
-                <h4 style="margin-bottom: 1rem;">Ready to join this league?</h4>
-                <?php if ($league['approval_required']): ?>
-                    <p style="color: #666; margin-bottom: 1rem;">
-                        This league requires admin approval. Submit your registration request and the admin will review it.
-                    </p>
-                <?php else: ?>
-                    <p style="color: #666; margin-bottom: 1rem;">
-                        Register your team now and start competing!
-                    </p>
-                <?php endif; ?>
+                <?php if ($current_user['role'] == 'team_owner'): ?>
+                    <h4 style="margin-bottom: 1rem;">Ready to join this league?</h4>
+                    <?php if ($league['approval_required']): ?>
+                        <p style="color: #666; margin-bottom: 1rem;">
+                            This league requires admin approval. Submit your registration request and the admin will review it.
+                        </p>
+                    <?php else: ?>
+                        <p style="color: #666; margin-bottom: 1rem;">
+                            Register your team now and start competing!
+                        </p>
+                    <?php endif; ?>
 
-                <a href="../team/register_team.php?league_id=<?php echo $league_id; ?>" class="btn btn-success">
-                    <?php echo $league['approval_required'] ? 'Submit Registration Request' : 'Register Team Now'; ?>
-                </a>
+                    <a href="../team/register_team.php?league_id=<?php echo $league_id; ?>" class="btn btn-success">
+                        <?php echo $league['approval_required'] ? 'Submit Registration Request' : 'Register Team Now'; ?>
+                    </a>
+                <?php else: ?>
+                     <div class="alert alert-info">
+                        <strong>Registration Info:</strong> Only team owners can join leagues. If you are a player, please ask your team captain or manager to register the team.
+                    </div>
+                <?php endif; ?>
 
             <?php else: ?>
                 <?php if ($is_full): ?>
@@ -747,6 +753,12 @@ $can_register = !$user_team && !$pending_request && !$is_full && !$deadline_pass
 
             <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #eee;">
                 <a href="browse_leagues.php" class="btn btn-secondary">Back to Leagues</a>
+
+                <?php if ($current_user['role'] == 'team_owner'): ?>
+                    <a href="../team/messages.php?recipient_id=1&message=Inquiry about League: <?php echo urlencode($league['name']); ?>" class="btn btn-info">
+                        Contact Admin
+                    </a>
+                <?php endif; ?>
 
                 <?php if ($can_manage): ?>
                     <a href="../match/schedule_matches.php?league_id=<?php echo $league['id']; ?>" class="btn btn-info">

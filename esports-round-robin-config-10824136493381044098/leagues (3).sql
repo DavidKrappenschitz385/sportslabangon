@@ -689,7 +689,8 @@ CREATE TABLE `messages` (
   `team_id` int(11) DEFAULT NULL,
   `message` text NOT NULL,
   `is_read` tinyint(1) DEFAULT 0,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `attachment_path` varchar(500) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
