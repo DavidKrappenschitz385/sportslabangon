@@ -640,6 +640,7 @@ CREATE TABLE `teams` (
   `id` int(11) NOT NULL,
   `name` varchar(100) NOT NULL,
   `league_id` int(11) DEFAULT NULL,
+  `sport_id` int(11) DEFAULT NULL,
   `owner_id` int(11) NOT NULL,
   `description` text DEFAULT NULL,
   `logo_url` varchar(255) DEFAULT NULL,
@@ -1101,7 +1102,8 @@ ALTER TABLE `registration_requests`
 --
 ALTER TABLE `teams`
   ADD CONSTRAINT `teams_ibfk_1` FOREIGN KEY (`league_id`) REFERENCES `leagues` (`id`),
-  ADD CONSTRAINT `teams_ibfk_2` FOREIGN KEY (`owner_id`) REFERENCES `users` (`id`);
+  ADD CONSTRAINT `teams_ibfk_2` FOREIGN KEY (`owner_id`) REFERENCES `users` (`id`),
+  ADD CONSTRAINT `teams_ibfk_3` FOREIGN KEY (`sport_id`) REFERENCES `sports` (`id`);
 
 --
 -- Constraints for table `team_league_registrations`

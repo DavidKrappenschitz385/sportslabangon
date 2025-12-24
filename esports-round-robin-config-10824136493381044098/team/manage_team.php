@@ -11,10 +11,13 @@ $user = getCurrentUser();
 $team_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 
 // Get team details and verify ownership
-$team_query = "SELECT t.*, l.name as league_name, l.season, s.name as sport_name, u.username as owner_username
+$team_query = "SELECT t.*, l.name as league_name, l.season,
+               COALESCE(s.name, s_team.name) as sport_name, t.sport_id,
+               u.username as owner_username
                FROM teams t
                LEFT JOIN leagues l ON t.league_id = l.id
                LEFT JOIN sports s ON l.sport_id = s.id
+               LEFT JOIN sports s_team ON t.sport_id = s_team.id
                JOIN users u ON t.owner_id = u.id
                WHERE t.id = :team_id AND (t.owner_id = :user_id OR :is_admin = 1)";
 $team_stmt = $db->prepare($team_query);
@@ -34,9 +37,23 @@ if (!$team) {
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_status'])) {
     $new_status = $_POST['recruitment_status'];
     $new_deadline = !empty($_POST['registration_deadline']) ? $_POST['registration_deadline'] . ' 23:59:59' : null;
+    $new_sport_id = !empty($_POST['sport_id']) ? $_POST['sport_id'] : null;
 
-    $update_query = "UPDATE teams SET recruitment_status = :status, registration_deadline = :deadline WHERE id = :id";
-    $update_stmt = $db->prepare($update_query);
+    if ($team['league_id']) {
+        // If in league, cannot change sport
+        $update_query = "UPDATE teams SET recruitment_status = :status, registration_deadline = :deadline WHERE id = :id";
+        $update_stmt = $db->prepare($update_query);
+    } else {
+        // Standalone team can change sport
+        $update_query = "UPDATE teams SET recruitment_status = :status, registration_deadline = :deadline, sport_id = :sport_id WHERE id = :id";
+        $update_stmt = $db->prepare($update_query);
+        if (empty($new_sport_id)) {
+             $update_stmt->bindValue(':sport_id', null, PDO::PARAM_NULL);
+        } else {
+             $update_stmt->bindParam(':sport_id', $new_sport_id);
+        }
+    }
+
     $update_stmt->bindParam(':status', $new_status);
     $update_stmt->bindParam(':deadline', $new_deadline);
     $update_stmt->bindParam(':id', $team_id);
@@ -45,6 +62,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_status'])) {
     // Refresh team data
     $team['recruitment_status'] = $new_status;
     $team['registration_deadline'] = $new_deadline;
+    if (!$team['league_id'] && $new_sport_id) {
+         $team['sport_id'] = $new_sport_id;
+         // Refresh sport name display
+         $s_query = "SELECT name FROM sports WHERE id = :id";
+         $s_stmt = $db->prepare($s_query);
+         $s_stmt->bindParam(':id', $new_sport_id);
+         $s_stmt->execute();
+         if ($s_row = $s_stmt->fetch(PDO::FETCH_ASSOC)) {
+             $team['sport_name'] = $s_row['name'];
+         }
+    }
+
     showMessage("Team status updated!", "success");
 }
 
@@ -173,6 +202,12 @@ $history_stmt = $db->prepare($history_query);
 $history_stmt->bindParam(':team_id', $team_id);
 $history_stmt->execute();
 $request_history = $history_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Get available sports
+$sports_query = "SELECT * FROM sports ORDER BY name";
+$sports_stmt = $db->prepare($sports_query);
+$sports_stmt->execute();
+$sports = $sports_stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <!DOCTYPE html>
@@ -304,6 +339,21 @@ $request_history = $history_stmt->fetchAll(PDO::FETCH_ASSOC);
                                     <option value="closed" <?php echo ($team['recruitment_status'] ?? 'open') == 'closed' ? 'selected' : ''; ?>>Closed (Not Accepting)</option>
                                 </select>
                             </div>
+
+                            <?php if (!$team['league_id']): ?>
+                            <div>
+                                <label><strong>Sport:</strong></label>
+                                <select name="sport_id" style="padding: 5px; border-radius: 3px;">
+                                    <option value="">Select Sport...</option>
+                                    <?php foreach ($sports as $sport): ?>
+                                        <option value="<?php echo $sport['id']; ?>" <?php echo ($team['sport_id'] == $sport['id']) ? 'selected' : ''; ?>>
+                                            <?php echo htmlspecialchars($sport['name']); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <?php endif; ?>
+
                             <div>
                                 <label><strong>Registration Deadline:</strong></label>
                                 <input type="date" name="registration_deadline"
