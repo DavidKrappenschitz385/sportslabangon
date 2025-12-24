@@ -242,7 +242,11 @@ if ($user['role'] == 'admin') {
                                 <small>Record: <?php echo $team['wins']; ?>W-<?php echo $team['draws']; ?>D-<?php echo $team['losses']; ?>L (<?php echo $team['points']; ?> pts)</small>
                             </div>
                             <div>
-                                <a href="team/manage_team.php?id=<?php echo $team['id']; ?>" class="btn">Manage</a>
+                                <?php if ($team['owner_id'] == $user['id']): ?>
+                                    <a href="team/manage_team.php?id=<?php echo $team['id']; ?>" class="btn">Manage</a>
+                                <?php else: ?>
+                                    <a href="team/view_team.php?id=<?php echo $team['id']; ?>" class="btn">View</a>
+                                <?php endif; ?>
                             </div>
                         </div>
                     <?php endforeach; ?>
