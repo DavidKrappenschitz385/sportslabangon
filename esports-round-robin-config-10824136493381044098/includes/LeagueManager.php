@@ -100,12 +100,110 @@ class LeagueManager {
             // 3. Recalculate standings for the entire league
             $this->recalculateLeagueStandings($league_id);
 
+            // 4. If this was a playoff match, check if we need to advance the winner
+            if ($match['match_type'] !== 'round_robin' && $match['match_type'] !== 'final') {
+                $winner_id = ($home_score > $away_score) ? $match['home_team_id'] : $match['away_team_id'];
+                // Handle draws? Playoffs usually require a winner.
+                // Assuming scores are final and distinct for now.
+                if ($home_score != $away_score) {
+                    $this->advancePlayoffWinner($match, $winner_id);
+                }
+            }
+
             $this->db->commit();
             return true;
         } catch (Exception $e) {
             $this->db->rollBack();
             throw $e;
         }
+    }
+
+    /**
+     * Advances the winner of a playoff match to the next round if possible.
+     */
+    private function advancePlayoffWinner($match, $winner_id) {
+        $league_id = $match['league_id'];
+        $current_round = $match['round'];
+        $current_pos = $match['bracket_pos'];
+
+        // Calculate Sibling Position (odd pairs with next even, even pairs with prev odd)
+        // 1 pairs with 2, 3 pairs with 4, etc.
+        $is_odd = ($current_pos % 2 != 0);
+        $sibling_pos = $is_odd ? ($current_pos + 1) : ($current_pos - 1);
+
+        // Find the sibling match
+        $query = "SELECT * FROM matches
+                  WHERE league_id = :league_id
+                  AND round = :round
+                  AND bracket_pos = :bracket_pos
+                  AND match_type = :match_type"; // Ensure same type (e.g. both Quarter Finals)
+
+        $stmt = $this->db->prepare($query);
+        $stmt->bindParam(':league_id', $league_id);
+        $stmt->bindParam(':round', $current_round);
+        $stmt->bindParam(':bracket_pos', $sibling_pos);
+        $stmt->bindParam(':match_type', $match['match_type']);
+        $stmt->execute();
+        $sibling_match = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($sibling_match && $sibling_match['status'] == 'completed') {
+            // Sibling is done! We can create the next match.
+
+            // Determine Sibling Winner
+            $s_home = (int)$sibling_match['home_score'];
+            $s_away = (int)$sibling_match['away_score'];
+            if ($s_home == $s_away) return; // Draw in playoff? Can't advance.
+
+            $sibling_winner_id = ($s_home > $s_away) ? $sibling_match['home_team_id'] : $sibling_match['away_team_id'];
+
+            // Determine Home/Away for next match
+            // If current is Odd (1), it takes the 'Top' spot (Home).
+            // If current is Even (2), it takes the 'Bottom' spot (Away).
+            $next_home_id = $is_odd ? $winner_id : $sibling_winner_id;
+            $next_away_id = $is_odd ? $sibling_winner_id : $winner_id;
+
+            // Determine Next Round Metadata
+            $next_round = $current_round + 1;
+            $next_pos = ceil($current_pos / 2);
+
+            // Determine Next Match Type
+            // This is tricky without knowing total rounds, but we can guess or leave as 'playoff'
+            // or infer from current type.
+            $next_type = 'playoff';
+            if ($match['match_type'] == 'semi_final') $next_type = 'final';
+            elseif ($match['match_type'] == 'quarter_final') $next_type = 'semi_final';
+
+            // Check if this next match already exists (idempotency)
+            $check = "SELECT id FROM matches
+                      WHERE league_id = :lid AND round = :rnd AND bracket_pos = :bpos";
+            $chk_stmt = $this->db->prepare($check);
+            $chk_stmt->bindParam(':lid', $league_id);
+            $chk_stmt->bindParam(':rnd', $next_round);
+            $chk_stmt->bindParam(':bpos', $next_pos);
+            $chk_stmt->execute();
+
+            if (!$chk_stmt->fetch()) {
+                // Create the match
+                $ins = "INSERT INTO matches (league_id, home_team_id, away_team_id, round, match_type, bracket_pos, match_date, status)
+                        VALUES (:lid, :hid, :aid, :rnd, :type, :bpos, :date, 'scheduled')";
+
+                // Set date to 1 day after the latest of the two previous matches
+                $date1 = strtotime($match['match_date']);
+                $date2 = strtotime($sibling_match['match_date']);
+                $next_date = date('Y-m-d H:i:s', max($date1, $date2) + 86400); // +24 hours
+
+                $ins_stmt = $this->db->prepare($ins);
+                $ins_stmt->bindParam(':lid', $league_id);
+                $ins_stmt->bindParam(':hid', $next_home_id);
+                $ins_stmt->bindParam(':aid', $next_away_id);
+                $ins_stmt->bindParam(':rnd', $next_round);
+                $ins_stmt->bindParam(':type', $next_type);
+                $ins_stmt->bindParam(':bpos', $next_pos);
+                $ins_stmt->bindParam(':date', $next_date);
+                $ins_stmt->execute();
+            }
+        }
+        // If sibling not completed, we do nothing. The next match will be created when the sibling finishes.
     }
 
     /**
