@@ -52,7 +52,7 @@ if ($existing_team) {
 $is_full = $league['current_teams'] >= $league['max_teams'];
 
 // Check if registration deadline has passed
-$deadline_passed = strtotime($league['registration_deadline']) < time();
+$deadline_passed = strtotime($league['registration_deadline'] . ' 23:59:59') < time();
 
 // Handle form submission
 if (isset($_POST['submit_request'])) {

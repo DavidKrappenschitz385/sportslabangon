@@ -137,7 +137,7 @@ $is_round_robin_done = ($total_expected_rr_matches > 0 && $completed_rr_matches 
 // Check permissions
 $can_manage = ($current_user['role'] == 'admin' || $current_user['id'] == $league['created_by']);
 $is_full = $league['current_teams'] >= $league['max_teams'];
-$deadline_passed = strtotime($league['registration_deadline']) < time();
+$deadline_passed = strtotime($league['registration_deadline'] . ' 23:59:59') < time();
 $can_register = !$user_team && !$pending_request && !$is_full && !$deadline_passed && in_array($league['status'], ['open', 'active']);
 ?>
 
