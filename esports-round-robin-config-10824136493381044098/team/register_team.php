@@ -16,8 +16,8 @@ if (!$league_id) {
 // Get league information
 $league_query = "SELECT l.*, s.name as sport_name, s.max_players_per_team,
                         (SELECT COUNT(*) FROM teams WHERE league_id = l.id) as current_teams,
-                        (SELECT COUNT(*) FROM team_registration_requests 
-                         WHERE league_id = l.id AND team_owner_id = :user_id 
+                        (SELECT COUNT(*) FROM team_registration_requests
+                         WHERE league_id = l.id AND team_owner_id = :user_id
                          AND status = 'pending') as pending_requests
                  FROM leagues l
                  JOIN sports s ON l.sport_id = s.id
@@ -57,8 +57,8 @@ $deadline_passed = strtotime($league['registration_deadline']) < time();
 // Handle form submission
 if (isset($_POST['submit_request'])) {
     $team_name = trim($_POST['team_name']);
-    $request_message = trim($_POST['request_message']);
-    
+    $request_message = trim($_POST['request_message'] ?? '');
+
     // Validation
     if (empty($team_name)) {
         showMessage("Team name is required!", "error");
@@ -74,7 +74,7 @@ if (isset($_POST['submit_request'])) {
         // Check if approval is required
         if ($league['approval_required']) {
             // Create registration request
-            $insert_query = "INSERT INTO team_registration_requests 
+            $insert_query = "INSERT INTO team_registration_requests
                             (league_id, team_name, team_owner_id, request_message, status, created_at)
                             VALUES (:league_id, :team_name, :owner_id, :message, 'pending', NOW())";
             $insert_stmt = $db->prepare($insert_query);
@@ -82,7 +82,7 @@ if (isset($_POST['submit_request'])) {
             $insert_stmt->bindParam(':team_name', $team_name);
             $insert_stmt->bindParam(':owner_id', $current_user['id']);
             $insert_stmt->bindParam(':message', $request_message);
-            
+
             if ($insert_stmt->execute()) {
                 showMessage("Registration request submitted successfully! Please wait for admin approval.", "success");
                 // Redirect after a delay
@@ -92,13 +92,13 @@ if (isset($_POST['submit_request'])) {
             }
         } else {
             // Direct registration (no approval required)
-            $insert_team = "INSERT INTO teams (name, league_id, owner_id, status, created_at)
-                           VALUES (:name, :league_id, :owner_id, 'active', NOW())";
+            $insert_team = "INSERT INTO teams (name, league_id, owner_id, created_at)
+                           VALUES (:name, :league_id, :owner_id, NOW())";
             $team_stmt = $db->prepare($insert_team);
             $team_stmt->bindParam(':name', $team_name);
             $team_stmt->bindParam(':league_id', $league_id);
             $team_stmt->bindParam(':owner_id', $current_user['id']);
-            
+
             if ($team_stmt->execute()) {
                 $team_id = $db->lastInsertId();
                 showMessage("Team registered successfully!", "success");
@@ -119,29 +119,29 @@ if (isset($_POST['submit_request'])) {
     <title>Register Team - <?php echo htmlspecialchars($league['name']); ?></title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        
+
         body {
             font-family: 'Arial', sans-serif;
             background: #f8f9fa;
             color: #333;
             line-height: 1.6;
         }
-        
+
         .header {
             background: linear-gradient(135deg, #007bff, #0056b3);
             color: white;
             padding: 1rem 2rem;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        
+
         .header h1 { font-size: 1.8rem; }
-        
+
         .container {
             max-width: 800px;
             margin: 2rem auto;
             padding: 0 2rem;
         }
-        
+
         .league-info-card {
             background: white;
             padding: 2rem;
@@ -150,90 +150,90 @@ if (isset($_POST['submit_request'])) {
             margin-bottom: 2rem;
             border-left: 4px solid #007bff;
         }
-        
+
         .league-title {
             font-size: 1.5rem;
             color: #333;
             margin-bottom: 0.5rem;
         }
-        
+
         .league-meta {
             color: #666;
             margin-bottom: 1rem;
         }
-        
+
         .info-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 1rem;
             margin-top: 1rem;
         }
-        
+
         .info-item {
             display: flex;
             flex-direction: column;
         }
-        
+
         .info-label {
             font-size: 0.8rem;
             color: #666;
             text-transform: uppercase;
             margin-bottom: 0.25rem;
         }
-        
+
         .info-value {
             font-weight: 600;
             color: #333;
         }
-        
+
         .alert {
             padding: 1rem;
             border-radius: 4px;
             margin-bottom: 1rem;
         }
-        
+
         .alert-success {
             background: #d4edda;
             color: #155724;
             border: 1px solid #c3e6cb;
         }
-        
+
         .alert-error {
             background: #f8d7da;
             color: #721c24;
             border: 1px solid #f5c6cb;
         }
-        
+
         .alert-warning {
             background: #fff3cd;
             color: #856404;
             border: 1px solid #ffeaa7;
         }
-        
+
         .alert-info {
             background: #d1ecf1;
             color: #0c5460;
             border: 1px solid #bee5eb;
         }
-        
+
         .registration-form {
             background: white;
             padding: 2rem;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        
+
         .form-group {
             margin-bottom: 1.5rem;
         }
-        
+
         .form-group label {
             display: block;
             margin-bottom: 0.5rem;
             font-weight: 600;
             color: #333;
         }
-        
+
         .form-control {
             width: 100%;
             padding: 0.75rem;
@@ -242,24 +242,24 @@ if (isset($_POST['submit_request'])) {
             font-size: 1rem;
             font-family: inherit;
         }
-        
+
         .form-control:focus {
             outline: none;
             border-color: #007bff;
             box-shadow: 0 0 0 2px rgba(0,123,255,0.1);
         }
-        
+
         textarea.form-control {
             resize: vertical;
             min-height: 120px;
         }
-        
+
         .form-help {
             font-size: 0.85rem;
             color: #666;
             margin-top: 0.25rem;
         }
-        
+
         .btn {
             padding: 0.75rem 1.5rem;
             border: none;
@@ -271,36 +271,36 @@ if (isset($_POST['submit_request'])) {
             display: inline-block;
             transition: all 0.3s ease;
         }
-        
+
         .btn-primary {
             background: #007bff;
             color: white;
         }
-        
+
         .btn-primary:hover {
             background: #0056b3;
         }
-        
+
         .btn-primary:disabled {
             background: #6c757d;
             cursor: not-allowed;
         }
-        
+
         .btn-secondary {
             background: #6c757d;
             color: white;
         }
-        
+
         .btn-secondary:hover {
             background: #545b62;
         }
-        
+
         .form-actions {
             display: flex;
             gap: 1rem;
             margin-top: 2rem;
         }
-        
+
         .status-badge {
             display: inline-block;
             padding: 0.25rem 0.75rem;
@@ -309,12 +309,12 @@ if (isset($_POST['submit_request'])) {
             font-weight: bold;
             text-transform: uppercase;
         }
-        
+
         .status-open { background: #28a745; color: white; }
         .status-active { background: #007bff; color: white; }
         .status-closed { background: #dc3545; color: white; }
         .status-full { background: #ffc107; color: black; }
-        
+
         @media (max-width: 768px) {
             .container { padding: 0 1rem; }
             .registration-form { padding: 1.5rem; }
@@ -326,10 +326,10 @@ if (isset($_POST['submit_request'])) {
     <div class="header">
         <h1>Register Your Team</h1>
     </div>
-    
+
     <div class="container">
         <?php displayMessage(); ?>
-        
+
         <!-- League Information -->
         <div class="league-info-card">
             <div class="league-title">
@@ -342,10 +342,10 @@ if (isset($_POST['submit_request'])) {
                 <?php endif; ?>
             </div>
             <div class="league-meta">
-                <?php echo htmlspecialchars($league['sport_name']); ?> • 
+                <?php echo htmlspecialchars($league['sport_name']); ?> •
                 <?php echo htmlspecialchars($league['season']); ?>
             </div>
-            
+
             <div class="info-grid">
                 <div class="info-item">
                     <span class="info-label">Registration Deadline</span>
@@ -359,7 +359,7 @@ if (isset($_POST['submit_request'])) {
                 <div class="info-item">
                     <span class="info-label">League Duration</span>
                     <span class="info-value">
-                        <?php echo date('M j', strtotime($league['start_date'])); ?> - 
+                        <?php echo date('M j', strtotime($league['start_date'])); ?> -
                         <?php echo date('M j, Y', strtotime($league['end_date'])); ?>
                     </span>
                 </div>
@@ -374,14 +374,14 @@ if (isset($_POST['submit_request'])) {
                     <span class="info-value"><?php echo $league['max_players_per_team']; ?></span>
                 </div>
             </div>
-            
+
             <?php if ($league['approval_required']): ?>
             <div class="alert alert-info" style="margin-top: 1rem;">
-                <strong>ℹ️ Approval Required:</strong> This league requires admin approval before teams can join. 
+                <strong>ℹ️ Approval Required:</strong> This league requires admin approval before teams can join.
                 Your registration request will be reviewed by the league administrators.
             </div>
             <?php endif; ?>
-            
+
             <?php if ($league['rules']): ?>
             <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #ddd;">
                 <strong>League Rules:</strong>
@@ -391,11 +391,11 @@ if (isset($_POST['submit_request'])) {
             </div>
             <?php endif; ?>
         </div>
-        
+
         <!-- Registration Form -->
         <?php if ($league['pending_requests'] > 0): ?>
             <div class="alert alert-warning">
-                <strong>⏳ Pending Request:</strong> You already have a pending registration request for this league. 
+                <strong>⏳ Pending Request:</strong> You already have a pending registration request for this league.
                 Please wait for the admin to review your request.
                 <br><br>
                 <a href="../league/view_league.php?id=<?php echo $league_id; ?>" class="btn btn-secondary">
@@ -404,7 +404,7 @@ if (isset($_POST['submit_request'])) {
             </div>
         <?php elseif ($is_full): ?>
             <div class="alert alert-error">
-                <strong>❌ League Full:</strong> This league has reached its maximum capacity. 
+                <strong>❌ League Full:</strong> This league has reached its maximum capacity.
                 No new teams can be registered at this time.
                 <br><br>
                 <a href="../league/view_league.php?id=<?php echo $league_id; ?>" class="btn btn-secondary">
@@ -432,14 +432,14 @@ if (isset($_POST['submit_request'])) {
                 <h3 style="margin-bottom: 1.5rem;">
                     <?php echo $league['approval_required'] ? '📝 Submit Registration Request' : '✅ Register Your Team'; ?>
                 </h3>
-                
+
                 <form method="POST">
                     <div class="form-group">
                         <label for="team_name">Team Name *</label>
-                        <input type="text" 
-                               id="team_name" 
-                               name="team_name" 
-                               class="form-control" 
+                        <input type="text"
+                               id="team_name"
+                               name="team_name"
+                               class="form-control"
                                required
                                maxlength="100"
                                placeholder="Enter your team name">
@@ -447,12 +447,12 @@ if (isset($_POST['submit_request'])) {
                             Choose a unique and appropriate name for your team
                         </div>
                     </div>
-                    
+
                     <?php if ($league['approval_required']): ?>
                     <div class="form-group">
                         <label for="request_message">Message to Admin (Optional)</label>
-                        <textarea id="request_message" 
-                                  name="request_message" 
+                        <textarea id="request_message"
+                                  name="request_message"
                                   class="form-control"
                                   placeholder="Tell the admin why you'd like to join this league, your team's background, or any other relevant information..."></textarea>
                         <div class="form-help">
@@ -460,7 +460,7 @@ if (isset($_POST['submit_request'])) {
                         </div>
                     </div>
                     <?php endif; ?>
-                    
+
                     <div class="alert alert-info">
                         <strong>Next Steps:</strong>
                         <?php if ($league['approval_required']): ?>
@@ -478,7 +478,7 @@ if (isset($_POST['submit_request'])) {
                             </ul>
                         <?php endif; ?>
                     </div>
-                    
+
                     <div class="form-actions">
                         <button type="submit" name="submit_request" class="btn btn-primary">
                             <?php echo $league['approval_required'] ? 'Submit Request' : 'Register Team'; ?>

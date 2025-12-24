@@ -60,6 +60,32 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['send_message'])) {
     }
 }
 
+// Handle deleting a conversation
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_conversation'])) {
+    $recipient_id_to_delete = $_POST['recipient_id_to_delete'];
+    $team_id_to_delete = $_POST['team_id_to_delete'] ?: null;
+
+    $delete_query = "DELETE FROM messages
+                     WHERE (sender_id = :user_id AND receiver_id = :recipient_id)
+                     OR (sender_id = :recipient_id AND receiver_id = :user_id)";
+
+    if ($team_id_to_delete) {
+        $delete_query .= " AND team_id = :team_id";
+    }
+
+    $stmt = $db->prepare($delete_query);
+    $stmt->bindParam(':user_id', $user['id']);
+    $stmt->bindParam(':recipient_id', $recipient_id_to_delete);
+    if ($team_id_to_delete) {
+        $stmt->bindParam(':team_id', $team_id_to_delete);
+    }
+
+    if ($stmt->execute()) {
+        header("Location: messages.php");
+        exit;
+    }
+}
+
 // Get conversations list
 $conversations_query = "
     SELECT
@@ -160,6 +186,20 @@ if ($recipient_id) {
         .conversation-item .time { font-size: 0.8em; color: #999; float: right; }
         .unread { font-weight: bold; color: #000; }
 
+        .delete-btn {
+            background: none;
+            border: none;
+            color: #dc3545;
+            cursor: pointer;
+            font-size: 0.9em;
+            padding: 5px;
+            float: right;
+            margin-left: 5px;
+        }
+        .delete-btn:hover {
+            text-decoration: underline;
+        }
+
         .chat-area { flex: 1; display: flex; flex-direction: column; }
         .chat-header { padding: 15px 20px; border-bottom: 1px solid #ddd; background: #fff; display: flex; justify-content: space-between; align-items: center; }
         .messages-list { flex: 1; overflow-y: auto; padding: 20px; background: #f5f5f5; display: flex; flex-direction: column; }
@@ -229,6 +269,15 @@ if ($recipient_id) {
                         <?php if ($recipient['role'] == 'admin'): ?>
                             <span style="font-size: 0.8em; color: #dc3545; font-weight: bold;">Administrator</span>
                         <?php endif; ?>
+                    </div>
+                    <div>
+                        <form method="POST" onsubmit="return confirm('Are you sure you want to delete this entire conversation? This cannot be undone.');">
+                            <input type="hidden" name="recipient_id_to_delete" value="<?php echo $recipient['id']; ?>">
+                            <input type="hidden" name="team_id_to_delete" value="<?php echo $team_id; ?>">
+                            <button type="submit" name="delete_conversation" class="delete-btn">
+                                <i class="fas fa-trash"></i> Delete Conversation
+                            </button>
+                        </form>
                     </div>
                 </div>
 

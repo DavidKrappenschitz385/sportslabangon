@@ -108,11 +108,11 @@ $check_member_stmt->execute();
 $is_team_member = $check_member_stmt->rowCount() > 0;
 
 // Get list of users messaged by current user
-$messaged_query = "SELECT DISTINCT receiver_id FROM messages WHERE sender_id = :user_id";
+$messaged_query = "SELECT receiver_id, message FROM messages WHERE sender_id = :user_id";
 $messaged_stmt = $db->prepare($messaged_query);
 $messaged_stmt->bindParam(':user_id', $current_user['id']);
 $messaged_stmt->execute();
-$messaged_users = $messaged_stmt->fetchAll(PDO::FETCH_COLUMN);
+$messaged_data = $messaged_stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Get sports for filter dropdown
 $sports_query = "SELECT * FROM sports ORDER BY name";
@@ -855,7 +855,14 @@ $featured_leagues = $featured_stmt->fetchAll(PDO::FETCH_ASSOC);
 
                         <!-- Message Button -->
                         <?php
-                        $has_messaged = in_array($league['created_by'], $messaged_users);
+                        $has_messaged = false;
+                        foreach ($messaged_data as $msg) {
+                            if ($msg['receiver_id'] == $league['created_by'] && strpos($msg['message'], "Inquiry about League: " . $league['name']) !== false) {
+                                $has_messaged = true;
+                                break;
+                            }
+                        }
+
                         $msg_text = $has_messaged ? "Messaged" : "Message";
                         $msg_link = "../team/messages.php?recipient_id=" . $league['created_by'];
                         // Pre-fill message for convenience
