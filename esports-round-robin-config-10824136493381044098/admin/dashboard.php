@@ -149,6 +149,7 @@ if ($user['role'] == 'admin') {
             <?php if ($user['role'] == 'admin'): ?>
                 <a href="../admin/manage_leagues.php">Manage Leagues</a>
                 <a href="../admin/manage_users.php">Manage Users</a>
+                <a href="../team/messages.php">Messages</a>
                 <a href="../admin/system_reports.php">Reports</a>
             <?php else: ?>
                 <a href="team/my_teams.php">My Teams</a>
