@@ -186,7 +186,7 @@ $where_clause = "WHERE " . implode(" AND ", $where_conditions);
 
 // Get available teams
 $teams_query = "SELECT t.*, l.name as league_name, l.season, l.status as league_status,
-                       l.registration_deadline, l.max_teams,
+                       l.registration_deadline as league_registration_deadline, l.max_teams,
                        s.name as sport_name, s.max_players_per_team,
                        u.first_name as owner_first_name, u.last_name as owner_last_name, u.username as owner_username,
                        (SELECT COUNT(*) FROM team_members WHERE team_id = t.id AND status = 'active') as member_count,
@@ -572,9 +572,15 @@ $user_teams_count = $user_teams_stmt->fetchColumn();
 
                     $has_pending = $team['user_has_pending'] > 0;
 
-                    // If registration_deadline is null, treat as open (false)
-                    $deadline_passed = ($team['registration_deadline'])
-                                       ? (strtotime($team['registration_deadline']) < time())
+                    // Determine deadline: prioritized team's deadline, then league's deadline
+                    $effective_deadline = $team['registration_deadline']; // Team specific deadline
+                    if (empty($effective_deadline)) {
+                        $effective_deadline = $team['league_registration_deadline']; // League deadline fallback
+                    }
+
+                    // If effective_deadline is null, treat as open (false)
+                    $deadline_passed = ($effective_deadline)
+                                       ? (strtotime($effective_deadline) < time())
                                        : false;
                     ?>
 
@@ -612,7 +618,7 @@ $user_teams_count = $user_teams_stmt->fetchColumn();
                         </div>
                         <div class="team-stat">
                             <div class="team-stat-number">
-                                <?php echo date('M j', strtotime($team['registration_deadline'])); ?>
+                                <?php echo $effective_deadline ? date('M j', strtotime($effective_deadline)) : 'None'; ?>
                             </div>
                             <div class="team-stat-label">Deadline</div>
                         </div>
