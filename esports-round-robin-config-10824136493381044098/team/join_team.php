@@ -564,9 +564,18 @@ $user_teams_count = $user_teams_stmt->fetchColumn();
                 <div class="team-card">
                     <?php
                     // Determine team status
-                    $is_full = $team['member_count'] >= $team['max_players_per_team'];
+                    // If max_players_per_team is null (e.g. no league/sport yet), treat as not full (false)
+                    // If 0, it might mean unlimited or explicitly 0. Assuming NULL means unlimited.
+                    $is_full = ($team['max_players_per_team'] !== null && $team['max_players_per_team'] > 0)
+                               ? ($team['member_count'] >= $team['max_players_per_team'])
+                               : false;
+
                     $has_pending = $team['user_has_pending'] > 0;
-                    $deadline_passed = strtotime($team['registration_deadline']) < time();
+
+                    // If registration_deadline is null, treat as open (false)
+                    $deadline_passed = ($team['registration_deadline'])
+                                       ? (strtotime($team['registration_deadline']) < time())
+                                       : false;
                     ?>
 
                     <div class="team-header">
