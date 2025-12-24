@@ -541,6 +541,7 @@ $stats = $stats_stmt->fetch(PDO::FETCH_ASSOC);
         <h1>👥 User Management</h1>
         <div class="nav-links">
             <a href="./dashboard.php">Dashboard</a>
+            <a href="../team/messages.php">Messages</a>
             <a href="system_reports.php">Reports</a>
             <a href="../auth/logout.php">Logout</a>
         </div>

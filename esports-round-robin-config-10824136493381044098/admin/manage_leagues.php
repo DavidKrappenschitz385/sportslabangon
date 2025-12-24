@@ -854,6 +854,7 @@ $stats = $stats_stmt->fetch(PDO::FETCH_ASSOC);
         <div class="nav-links">
             <a href="./dashboard.php">Dashboard</a>
             <a href="manage_users.php">Users</a>
+            <a href="../team/messages.php">Messages</a>
             <a href="#" onclick="showApprovalsModal(); return false;">
                 Approvals
                 <?php if ($pending_count > 0): ?>
