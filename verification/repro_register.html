@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Reproduction - Register Team</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        .form-group { margin-bottom: 15px; }
+        .form-control { width: 100%; padding: 8px; }
+        .btn { padding: 10px 20px; background: blue; color: white; border: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Register Team Mockup</h1>
+    <form method="POST">
+        <!-- New Dropdown -->
+        <div class="form-group">
+            <label for="existing_team">Register Existing Team (Optional)</label>
+            <select id="existing_team" class="form-control" onchange="fillTeamName(this)">
+                <option value="">-- Create New Team --</option>
+                <option value="Team Alpha">Team Alpha (Basketball)</option>
+                <option value="Team Beta">Team Beta (Volleyball)</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="team_name">Team Name *</label>
+            <input type="text" id="team_name" name="team_name" class="form-control" required>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn">Submit Request</button>
+        </div>
+    </form>
+
+    <script>
+    function fillTeamName(select) {
+        if (select.value) {
+            document.getElementById('team_name').value = select.value;
+        }
+    }
+    </script>
+</body>
+</html>
