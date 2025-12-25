@@ -34,6 +34,17 @@ if (!$league) {
     exit;
 }
 
+// Get user's existing teams for dropdown
+$my_teams_query = "SELECT t.*, COALESCE(s.name, 'Unknown') as sport_name
+                   FROM teams t
+                   LEFT JOIN sports s ON t.sport_id = s.id
+                   WHERE t.owner_id = :user_id
+                   ORDER BY t.created_at DESC";
+$my_teams_stmt = $db->prepare($my_teams_query);
+$my_teams_stmt->bindParam(':user_id', $current_user['id']);
+$my_teams_stmt->execute();
+$my_teams = $my_teams_stmt->fetchAll(PDO::FETCH_ASSOC);
+
 // Check if user already has a team in this league
 $existing_team_query = "SELECT * FROM teams WHERE league_id = :league_id AND owner_id = :owner_id";
 $existing_stmt = $db->prepare($existing_team_query);
@@ -71,51 +82,22 @@ if (isset($_POST['submit_request'])) {
     } elseif ($league['status'] != 'open' && $league['status'] != 'active') {
         showMessage("This league is not accepting registrations!", "error");
     } else {
-        // Check if approval is required
-        if ($league['approval_required']) {
-            // Create registration request
-            $insert_query = "INSERT INTO team_registration_requests
-                            (league_id, team_name, team_owner_id, request_message, status, created_at)
-                            VALUES (:league_id, :team_name, :owner_id, :message, 'pending', NOW())";
-            $insert_stmt = $db->prepare($insert_query);
-            $insert_stmt->bindParam(':league_id', $league_id);
-            $insert_stmt->bindParam(':team_name', $team_name);
-            $insert_stmt->bindParam(':owner_id', $current_user['id']);
-            $insert_stmt->bindParam(':message', $request_message);
+        // ALWAYS Create registration request (Modified)
+        $insert_query = "INSERT INTO team_registration_requests
+                        (league_id, team_name, team_owner_id, request_message, status, created_at)
+                        VALUES (:league_id, :team_name, :owner_id, :message, 'pending', NOW())";
+        $insert_stmt = $db->prepare($insert_query);
+        $insert_stmt->bindParam(':league_id', $league_id);
+        $insert_stmt->bindParam(':team_name', $team_name);
+        $insert_stmt->bindParam(':owner_id', $current_user['id']);
+        $insert_stmt->bindParam(':message', $request_message);
 
-            if ($insert_stmt->execute()) {
-                showMessage("Registration request submitted successfully! Please wait for admin approval.", "success");
-                // Redirect after a delay
-                echo '<script>setTimeout(function(){ window.location.href = "../league/view_league.php?id=' . $league_id . '"; }, 3000);</script>';
-            } else {
-                showMessage("Failed to submit registration request!", "error");
-            }
+        if ($insert_stmt->execute()) {
+            showMessage("Registration request submitted successfully! Please wait for admin approval.", "success");
+            // Redirect after a delay
+            echo '<script>setTimeout(function(){ window.location.href = "../league/view_league.php?id=' . $league_id . '"; }, 3000);</script>';
         } else {
-            // Direct registration (no approval required)
-            $insert_team = "INSERT INTO teams (name, league_id, owner_id, created_at)
-                           VALUES (:name, :league_id, :owner_id, NOW())";
-            $team_stmt = $db->prepare($insert_team);
-            $team_stmt->bindParam(':name', $team_name);
-            $team_stmt->bindParam(':league_id', $league_id);
-            $team_stmt->bindParam(':owner_id', $current_user['id']);
-
-            if ($team_stmt->execute()) {
-                $team_id = $db->lastInsertId();
-
-                // Update user role to team_owner if they are not admin
-                if ($current_user['role'] != 'admin' && $current_user['role'] != 'team_owner') {
-                    $update_role = "UPDATE users SET role = 'team_owner' WHERE id = :user_id";
-                    $role_stmt = $db->prepare($update_role);
-                    $role_stmt->bindParam(':user_id', $current_user['id']);
-                    $role_stmt->execute();
-                    $_SESSION['role'] = 'team_owner';
-                }
-
-                showMessage("Team registered successfully!", "success");
-                echo '<script>setTimeout(function(){ window.location.href = "../team/view_team.php?id=' . $team_id . '"; }, 2000);</script>';
-            } else {
-                showMessage("Failed to register team!", "error");
-            }
+            showMessage("Failed to submit registration request!", "error");
         }
     }
 }
@@ -440,10 +422,27 @@ if (isset($_POST['submit_request'])) {
         <?php else: ?>
             <div class="registration-form">
                 <h3 style="margin-bottom: 1.5rem;">
-                    <?php echo $league['approval_required'] ? '📝 Submit Registration Request' : '✅ Register Your Team'; ?>
+                    📝 Submit Registration Request
                 </h3>
 
                 <form method="POST">
+                    <?php if (!empty($my_teams)): ?>
+                    <div class="form-group">
+                        <label for="existing_team">Register Existing Team (Optional)</label>
+                        <select id="existing_team" class="form-control" onchange="fillTeamName(this)">
+                            <option value="">-- Create New Team --</option>
+                            <?php foreach ($my_teams as $team): ?>
+                                <option value="<?php echo htmlspecialchars($team['name']); ?>">
+                                    <?php echo htmlspecialchars($team['name']); ?> (<?php echo htmlspecialchars($team['sport_name']); ?>)
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <div class="form-help">
+                            Select one of your existing teams to copy its name (members will be copied upon approval)
+                        </div>
+                    </div>
+                    <?php endif; ?>
+
                     <div class="form-group">
                         <label for="team_name">Team Name *</label>
                         <input type="text"
@@ -458,7 +457,6 @@ if (isset($_POST['submit_request'])) {
                         </div>
                     </div>
 
-                    <?php if ($league['approval_required']): ?>
                     <div class="form-group">
                         <label for="request_message">Message to Admin (Optional)</label>
                         <textarea id="request_message"
@@ -469,29 +467,20 @@ if (isset($_POST['submit_request'])) {
                             This message will be reviewed by the league administrators along with your request
                         </div>
                     </div>
-                    <?php endif; ?>
 
                     <div class="alert alert-info">
                         <strong>Next Steps:</strong>
-                        <?php if ($league['approval_required']): ?>
-                            <ul style="margin-top: 0.5rem; margin-left: 1.5rem;">
-                                <li>Your registration request will be submitted to the league administrators</li>
-                                <li>Admin will review your profile, team name, and message</li>
-                                <li>You'll be notified once your request is approved or rejected</li>
-                                <li>After approval, you can add players to your team</li>
-                            </ul>
-                        <?php else: ?>
-                            <ul style="margin-top: 0.5rem; margin-left: 1.5rem;">
-                                <li>Your team will be immediately registered in this league</li>
-                                <li>You can start adding players to your team right away</li>
-                                <li>Make sure to review the league rules and schedule</li>
-                            </ul>
-                        <?php endif; ?>
+                        <ul style="margin-top: 0.5rem; margin-left: 1.5rem;">
+                            <li>Your registration request will be submitted to the league administrators</li>
+                            <li>Admin will review your profile, team name, and message</li>
+                            <li>You'll be notified once your request is approved or rejected</li>
+                            <li>After approval, if you selected an existing team, your members will be copied automatically</li>
+                        </ul>
                     </div>
 
                     <div class="form-actions">
                         <button type="submit" name="submit_request" class="btn btn-primary">
-                            <?php echo $league['approval_required'] ? 'Submit Request' : 'Register Team'; ?>
+                            Submit Request
                         </button>
                         <a href="../league/view_league.php?id=<?php echo $league_id; ?>" class="btn btn-secondary">
                             Cancel
@@ -499,6 +488,14 @@ if (isset($_POST['submit_request'])) {
                     </div>
                 </form>
             </div>
+
+            <script>
+            function fillTeamName(select) {
+                if (select.value) {
+                    document.getElementById('team_name').value = select.value;
+                }
+            }
+            </script>
         <?php endif; ?>
     </div>
 </body>

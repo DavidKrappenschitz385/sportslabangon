@@ -38,13 +38,56 @@ if (isset($_POST['approval_action']) && isset($_POST['request_id'])) {
             $new_team_id = $db->lastInsertId();
             
             // Add owner as team member
-           // Add owner as team member
-$member_query = "INSERT INTO team_members (team_id, player_id, position, joined_at, status) 
-                VALUES (:team_id, :player_id, 'Owner', NOW(), 'active')";
-$member_stmt = $db->prepare($member_query);
-$member_stmt->bindParam(':team_id', $new_team_id);
-$member_stmt->bindParam(':player_id', $request['team_owner_id']);
-$member_stmt->execute();
+            $member_query = "INSERT INTO team_members (team_id, player_id, position, joined_at, status)
+                            VALUES (:team_id, :player_id, 'Owner', NOW(), 'active')";
+            $member_stmt = $db->prepare($member_query);
+            $member_stmt->bindParam(':team_id', $new_team_id);
+            $member_stmt->bindParam(':player_id', $request['team_owner_id']);
+            $member_stmt->execute();
+
+            // Check for existing team to copy members from
+            // We look for a team with the SAME NAME and SAME OWNER, excluding the new one
+            $source_team_query = "SELECT id FROM teams
+                                 WHERE name = :name
+                                 AND owner_id = :owner_id
+                                 AND id != :new_id
+                                 ORDER BY created_at DESC LIMIT 1";
+            $source_team_stmt = $db->prepare($source_team_query);
+            $source_team_stmt->bindParam(':name', $request['team_name']);
+            $source_team_stmt->bindParam(':owner_id', $request['team_owner_id']);
+            $source_team_stmt->bindParam(':new_id', $new_team_id);
+            $source_team_stmt->execute();
+
+            if ($source_team = $source_team_stmt->fetch(PDO::FETCH_ASSOC)) {
+                $source_id = $source_team['id'];
+
+                // Fetch active members from source team (excluding owner who is already added)
+                $copy_members_query = "SELECT player_id, position, jersey_number
+                                      FROM team_members
+                                      WHERE team_id = :source_id
+                                      AND status = 'active'
+                                      AND player_id != :owner_id";
+                $copy_members_stmt = $db->prepare($copy_members_query);
+                $copy_members_stmt->bindParam(':source_id', $source_id);
+                $copy_members_stmt->bindParam(':owner_id', $request['team_owner_id']);
+                $copy_members_stmt->execute();
+                $members_to_copy = $copy_members_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                // Insert members into new team
+                if (!empty($members_to_copy)) {
+                    $insert_member_query = "INSERT INTO team_members (team_id, player_id, position, jersey_number, joined_at, status)
+                                           VALUES (:team_id, :player_id, :position, :jersey_number, NOW(), 'active')";
+                    $insert_member_stmt = $db->prepare($insert_member_query);
+
+                    foreach ($members_to_copy as $member) {
+                        $insert_member_stmt->bindValue(':team_id', $new_team_id);
+                        $insert_member_stmt->bindValue(':player_id', $member['player_id']);
+                        $insert_member_stmt->bindValue(':position', $member['position']);
+                        $insert_member_stmt->bindValue(':jersey_number', $member['jersey_number']);
+                        $insert_member_stmt->execute();
+                    }
+                }
+            }
             
             // Update request status
             $update_req = "UPDATE team_registration_requests 
